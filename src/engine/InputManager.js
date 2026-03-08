@@ -6,7 +6,8 @@ const DEFAULT_BINDINGS_P1 = {
   drift: ['Space'],
   useItem: ['KeyF', 'Enter'],
   lookBehind: ['KeyR'],
-  horn: ['KeyT']
+  horn: ['KeyT'],
+  cameraToggle: ['KeyC']
 };
 
 const DEFAULT_BINDINGS_P2 = {
@@ -63,7 +64,8 @@ export class InputManager {
         drift: false,
         useItem: false,
         lookBehind: false,
-        horn: false
+        horn: false,
+        cameraToggle: false
       },
       gamepadIndex: -1
     };
@@ -142,6 +144,7 @@ export class InputManager {
     s.useItem = this._isKeyPressed(b.useItem);
     s.lookBehind = this._isKeyHeld(b.lookBehind);
     s.horn = this._isKeyPressed(b.horn);
+    if (b.cameraToggle) s.cameraToggle = this._isKeyPressed(b.cameraToggle);
   }
 
   _updatePlayerGamepad(player) {

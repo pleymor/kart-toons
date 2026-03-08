@@ -1,5 +1,6 @@
 import { getAllCharacters } from '../characters/index.js';
 import { setScene, getAudioEngine } from '../main.js';
+import { startRotatingPreview } from './KartPreview.js';
 
 function createStatBar(value, max = 10) {
   const pct = (value / max) * 100;
@@ -20,8 +21,11 @@ function createCharGrid(characters, selectedIds = []) {
       ${isSelected ? 'background:rgba(255,68,0,0.15);' : ''}
     ">
       ${selLabel}
-      <div style="width:clamp(50px,12vw,80px);height:clamp(50px,12vw,80px);border-radius:50%;background:#${c.kartColor.toString(16).padStart(6,'0')};
-        margin:0 auto clamp(4px,1vw,8px);border:3px solid #${c.kartAccent.toString(16).padStart(6,'0')};"></div>
+      <div style="width:clamp(60px,14vw,96px);height:clamp(60px,14vw,96px);border-radius:50%;overflow:hidden;
+        margin:0 auto clamp(4px,1vw,8px);border:3px solid #${c.kartAccent.toString(16).padStart(6,'0')};background:#111;">
+        <canvas class="kart-preview" data-char-id="${c.id}" width="128" height="128"
+          style="width:100%;height:100%;display:block;"></canvas>
+      </div>
       <h3 style="text-align:center;margin:0 0 4px;font-size:clamp(12px,2.5vw,14px);color:#fff;">${c.name}</h3>
       <p style="text-align:center;font-size:clamp(9px,1.8vw,11px);color:#888;margin:0 0 6px;">${c.description}</p>
       <div style="display:grid;grid-template-columns:30px 1fr;gap:3px;font-size:clamp(9px,1.8vw,11px);color:#aaa;">
@@ -42,8 +46,26 @@ export function show(container, data = {}) {
   const playerCount = data.playerCount || 1;
   const selectedIds = [];
   let currentPlayer = 0;
+  let previewCleanups = [];
+
+  function stopPreviews() {
+    for (const fn of previewCleanups) fn();
+    previewCleanups = [];
+  }
+
+  function startPreviews() {
+    container.querySelectorAll('.kart-preview').forEach(canvas => {
+      const charId = canvas.dataset.charId;
+      const char = characters.find(c => c.id === charId);
+      if (char) {
+        const cleanup = startRotatingPreview(canvas, char);
+        previewCleanups.push(cleanup);
+      }
+    });
+  }
 
   function render() {
+    stopPreviews();
     const title = playerCount > 1
       ? `PLAYER ${currentPlayer + 1} - SELECT`
       : 'SELECT CHARACTER';
@@ -75,6 +97,7 @@ export function show(container, data = {}) {
         currentPlayer++;
 
         if (currentPlayer >= playerCount) {
+          stopPreviews();
           if (playerCount === 1) {
             setScene('circuit-select', { ...data, characterId: selectedIds[0] });
           } else {
@@ -92,9 +115,12 @@ export function show(container, data = {}) {
         currentPlayer--;
         render();
       } else {
+        stopPreviews();
         setScene('menu');
       }
     });
+
+    startPreviews();
   }
 
   render();

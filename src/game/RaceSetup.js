@@ -15,6 +15,7 @@ import { TurretController } from './TurretController.js';
 import { Storage } from '../utils/Storage.js';
 import groundVert from '../shaders/ground.vert.glsl';
 import groundFrag from '../shaders/ground.frag.glsl';
+import roadVert from '../shaders/road.vert.glsl';
 import roadFrag from '../shaders/road.frag.glsl';
 
 let animFrameId = null;
@@ -166,6 +167,9 @@ export async function startRace(config) {
     cam.lookAt(kart.position.x, kart.position.y + 1.5, kart.position.z);
   }
 
+  // Camera mode per player: 0=chase, 1=cockpit
+  const cameraModes = new Array(humanCount).fill(0);
+
   let lastTime = performance.now();
 
   function raceLoop(now) {
@@ -188,6 +192,11 @@ export async function startRace(config) {
 
         if (!isCrewMode && pInput.useItem) {
           itemSystem.useItem(`player-${i}`);
+        }
+
+        // Toggle camera mode
+        if (pInput.cameraToggle) {
+          cameraModes[i] = (cameraModes[i] + 1) % 2;
         }
       }
 
@@ -267,7 +276,11 @@ export async function startRace(config) {
     } else {
       for (let i = 0; i < humanKarts.length; i++) {
         const pInput = inputManager.getPlayerState(i);
-        updateChaseCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
+        if (cameraModes[i] === 1) {
+          updateCockpitCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
+        } else {
+          updateChaseCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
+        }
       }
     }
 
@@ -316,6 +329,27 @@ const _chaseCamOffset = new THREE.Vector3();
 const _chaseCamTarget = new THREE.Vector3();
 const _chaseCamLookAt = new THREE.Vector3();
 
+const _cockpitLookAt = new THREE.Vector3();
+
+function updateCockpitCamera(camera, kart, lookBehind) {
+  const sign = lookBehind ? -1 : 1;
+  // Position: inside the kart cockpit, slightly above and forward
+  camera.position.set(
+    kart.position.x,
+    kart.position.y + 1.6,
+    kart.position.z
+  );
+  // Look far ahead in kart direction
+  _cockpitLookAt.set(
+    kart.position.x + sign * Math.sin(kart.yaw) * 50,
+    kart.position.y + 1.2,
+    kart.position.z + sign * Math.cos(kart.yaw) * 50
+  );
+  camera.lookAt(_cockpitLookAt);
+  camera.fov = 85; // wider FOV for cockpit
+  camera.updateProjectionMatrix();
+}
+
 function updateChaseCamera(camera, kart, lookBehind) {
   const sign = lookBehind ? 1 : -1;
   _chaseCamOffset.set(
@@ -328,6 +362,10 @@ function updateChaseCamera(camera, kart, lookBehind) {
   camera.position.copy(_chaseCamTarget);
   _chaseCamLookAt.set(kart.position.x, kart.position.y + 1, kart.position.z);
   camera.lookAt(_chaseCamLookAt);
+  if (camera.fov !== 60) {
+    camera.fov = 60;
+    camera.updateProjectionMatrix();
+  }
 }
 
 // --- Shared kart geometries ---
@@ -669,7 +707,7 @@ function buildTrack(renderer, circuit) {
   shaderUniforms.push(roadUniforms);
 
   const roadMat = new THREE.ShaderMaterial({
-    vertexShader: groundVert,
+    vertexShader: roadVert,
     fragmentShader: roadFrag,
     uniforms: roadUniforms,
     side: THREE.DoubleSide
@@ -696,10 +734,16 @@ function buildTrack(renderer, circuit) {
     side: THREE.DoubleSide
   });
 
-  const groundGeo = new THREE.PlaneGeometry(2000, 2000);
+  // Place ground below the lowest waypoint
+  let minY = Infinity;
+  for (const wp of waypoints) {
+    if (wp.y < minY) minY = wp.y;
+  }
+
+  const groundGeo = new THREE.PlaneGeometry(2000, 2000, 200, 200);
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.1;
+  ground.position.y = minY - 2;
   ground.receiveShadow = true;
   renderer.scene.add(ground);
 
