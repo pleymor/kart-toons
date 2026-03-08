@@ -671,51 +671,10 @@ function buildTrack(renderer, circuit) {
     side: THREE.DoubleSide
   });
 
-  for (let i = 0; i < waypoints.length; i++) {
-    const curr = waypoints[i];
-    const next = waypoints[(i + 1) % waypoints.length];
-
-    // Build a quad that slopes from curr to next (no staircase)
-    const dx = next.x - curr.x;
-    const dz = next.z - curr.z;
-    const len = Math.sqrt(dx * dx + dz * dz) || 1;
-    // Perpendicular direction for track width
-    const px = -dz / len * trackWidth * 0.5;
-    const pz = dx / len * trackWidth * 0.5;
-
-    // 4 corners: left/right at curr, left/right at next
-    const positions = new Float32Array([
-      curr.x - px, curr.y + 0.01, curr.z - pz,  // 0: curr-left
-      curr.x + px, curr.y + 0.01, curr.z + pz,  // 1: curr-right
-      next.x + px, next.y + 0.01, next.z + pz,  // 2: next-right
-      next.x - px, next.y + 0.01, next.z - pz,  // 3: next-left
-    ]);
-    const uvs = new Float32Array([
-      0, 0,  1, 0,  1, 1,  0, 1
-    ]);
-    const indices = [0, 2, 1, 0, 3, 2];
-
-    const segGeo = new THREE.BufferGeometry();
-    segGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    segGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-    segGeo.setIndex(indices);
-    segGeo.computeVertexNormals();
-
-    const seg = new THREE.Mesh(segGeo, roadMat);
-    seg.receiveShadow = true;
-    renderer.scene.add(seg);
-  }
-
-  // Fill gaps at corners with a disc at each waypoint
-  const jointGeo = new THREE.CircleGeometry(trackWidth * 0.5, 16);
-  for (let i = 0; i < waypoints.length; i++) {
-    const wp = waypoints[i];
-    const joint = new THREE.Mesh(jointGeo, roadMat);
-    joint.rotation.x = -Math.PI / 2;
-    joint.position.set(wp.x, wp.y + 0.01, wp.z);
-    joint.receiveShadow = true;
-    renderer.scene.add(joint);
-  }
+  // Build a single continuous track mesh with smooth corners
+  const trackMesh = buildContinuousTrackMesh(waypoints, trackWidth, roadMat);
+  trackMesh.receiveShadow = true;
+  renderer.scene.add(trackMesh);
 
   // Ground plane with procedural shader
   const groundUniforms = {
@@ -905,6 +864,130 @@ function placeSceneryProp(renderer, theme, palette, x, y, z, rng) {
       renderer.scene.add(rock);
     }
   }
+}
+
+// --- Continuous track mesh builder ---
+
+function buildContinuousTrackMesh(waypoints, trackWidth, material) {
+  const n = waypoints.length;
+  const halfW = trackWidth * 0.5;
+  const CORNER_SUBDIVS = 6; // subdivisions per corner for smooth curves
+
+  // 1. Compute smoothed perpendicular at each waypoint (average of adjacent segments)
+  const perps = []; // { x, z } normalized perpendicular at each waypoint
+  const segDirs = []; // direction vectors for each segment
+  for (let i = 0; i < n; i++) {
+    const next = waypoints[(i + 1) % n];
+    const dx = next.x - waypoints[i].x;
+    const dz = next.z - waypoints[i].z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    segDirs.push({ x: dx / len, z: dz / len });
+  }
+
+  for (let i = 0; i < n; i++) {
+    const prev = segDirs[(i - 1 + n) % n];
+    const curr = segDirs[i];
+    // Average of incoming and outgoing direction
+    let ax = prev.x + curr.x;
+    let az = prev.z + curr.z;
+    const al = Math.sqrt(ax * ax + az * az) || 1;
+    ax /= al;
+    az /= al;
+    // Perpendicular (rotate 90°)
+    perps.push({ x: -az, z: ax });
+  }
+
+  // 2. Generate the strip of vertices: for each waypoint, add subdivision points
+  //    around the corner, then a cross-section at each sub-point
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+  let vAlong = 0; // running V coordinate
+
+  // Cross-section: multiple points across the width for smooth shading
+  const CROSS_DIVS = 4; // divisions across width
+
+  function addCrossSection(px, py, pz, perpX, perpZ, v) {
+    for (let c = 0; c <= CROSS_DIVS; c++) {
+      const t = c / CROSS_DIVS; // 0 = left, 1 = right
+      const offset = (t - 0.5) * trackWidth;
+      positions.push(
+        px + perpX * offset,
+        py + 0.02,
+        pz + perpZ * offset
+      );
+      uvs.push(t, v);
+    }
+  }
+
+  function addStripIndices(baseIdx) {
+    // Connect current cross-section row to previous
+    const stride = CROSS_DIVS + 1;
+    const prev = baseIdx - stride;
+    for (let c = 0; c < CROSS_DIVS; c++) {
+      const bl = prev + c;
+      const br = prev + c + 1;
+      const tl = baseIdx + c;
+      const tr = baseIdx + c + 1;
+      indices.push(bl, tl, br);
+      indices.push(br, tl, tr);
+    }
+  }
+
+  // Start with first waypoint
+  addCrossSection(
+    waypoints[0].x, waypoints[0].y, waypoints[0].z,
+    perps[0].x, perps[0].z, 0
+  );
+  let vertCount = CROSS_DIVS + 1;
+
+  for (let i = 0; i < n; i++) {
+    const curr = waypoints[i];
+    const next = waypoints[(i + 1) % n];
+    const segLen = curr.distanceTo(next);
+
+    // Subdivide the straight segment
+    const straightDivs = Math.max(1, Math.ceil(segLen / 10));
+    for (let s = 1; s <= straightDivs; s++) {
+      const t = s / straightDivs;
+      const px = curr.x + (next.x - curr.x) * t;
+      const py = curr.y + (next.y - curr.y) * t;
+      const pz = curr.z + (next.z - curr.z) * t;
+
+      // Interpolate perpendicular
+      const pi = perps[i];
+      const pn = perps[(i + 1) % n];
+      const lerpX = pi.x + (pn.x - pi.x) * t;
+      const lerpZ = pi.z + (pn.z - pi.z) * t;
+      const ll = Math.sqrt(lerpX * lerpX + lerpZ * lerpZ) || 1;
+
+      vAlong += segLen / straightDivs / trackWidth; // UV scale relative to width
+
+      addCrossSection(px, py, pz, lerpX / ll, lerpZ / ll, vAlong);
+      addStripIndices(vertCount);
+      vertCount += CROSS_DIVS + 1;
+    }
+  }
+
+  // Close the loop: connect last row back to first row
+  const stride = CROSS_DIVS + 1;
+  const lastBase = vertCount - stride;
+  for (let c = 0; c < CROSS_DIVS; c++) {
+    const bl = lastBase + c;
+    const br = lastBase + c + 1;
+    const tl = c;
+    const tr = c + 1;
+    indices.push(bl, tl, br);
+    indices.push(br, tl, tr);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  return new THREE.Mesh(geo, material);
 }
 
 // --- Kart-to-kart collision resolution ---
