@@ -16,8 +16,8 @@ export class KartController {
 
     // Stats → physics parameters
     const s = characterData.stats;
-    this.maxSpeed = 50 + s.speed * 8;       // 58-130 units/s
-    this.accelForce = 25 + s.acceleration * 5;
+    this.maxSpeed = 100 + s.speed * 16;      // 116-260 units/s
+    this.accelForce = 50 + s.acceleration * 10;
     this.handling = 0.5 + s.handling * 0.12;  // turn rate
     this.weightFactor = s.weight;
     this.drag = 0.98;
@@ -136,6 +136,18 @@ export class KartController {
     // Boost
     this._updateBoost(delta);
 
+    // Lateral grip: blend velocity toward forward direction
+    // Low handling + high speed + heavy = more oversteer (slide)
+    // High handling + light = snappy, velocity follows yaw quickly
+    const grip = this.handling * 0.6 / Math.max(this.weightFactor * 0.25, 1);
+    const gripFactor = Math.min(grip * delta * 8, 1.0);
+    const currentSpeed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+    if (currentSpeed > 0.1) {
+      const targetVel = this._forward.clone().multiplyScalar(currentSpeed);
+      this.velocity.x += (targetVel.x - this.velocity.x) * gripFactor;
+      this.velocity.z += (targetVel.z - this.velocity.z) * gripFactor;
+    }
+
     // Apply drag
     this.velocity.multiplyScalar(this.drag);
 
@@ -239,7 +251,7 @@ export class KartController {
       const dotFwd = (this._forward.x * segDx + this._forward.z * segDz) / segHLen;
       this.slopeGrade = segSlope * dotFwd; // positive = uphill, negative = downhill
       // Pitch angle: atan of rise/run along kart direction
-      this._targetPitch = Math.atan2(segDy * dotFwd, segHLen * Math.abs(dotFwd) || 1);
+      this._targetPitch = -Math.atan2(segDy * dotFwd, segHLen * Math.abs(dotFwd) || 1);
 
       if (lateralDist <= trackHalf + 2) {
         // On or near road

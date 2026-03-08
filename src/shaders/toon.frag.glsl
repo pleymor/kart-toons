@@ -22,10 +22,10 @@ void main() {
   vec3 normal = normalize(vNormal);
   vec3 lightDir = normalize(lightDirection);
 
-  // Diffuse: stepped quantization
+  // Diffuse: stepped quantization for toon look
   float NdotL = dot(normal, lightDir);
   float intensity = NdotL * 0.5 + 0.5; // remap to [0, 1]
-  intensity = floor(intensity * steps) / steps;
+  intensity = floor(intensity * steps + 0.5) / steps;
 
   vec3 diffuse = color * lightColor * intensity;
 
@@ -34,17 +34,21 @@ void main() {
   vec3 halfDir = normalize(lightDir + viewDir);
   float spec = pow(max(dot(normal, halfDir), 0.0), 32.0);
   float specStep = step(0.5, spec);
-  vec3 specular = lightColor * specStep * 0.3;
+  vec3 specular = lightColor * specStep * 0.25;
 
   // Rim lighting
   float rim = 1.0 - max(dot(viewDir, normal), 0.0);
   rim = pow(rim, rimPower);
   float rimStep = step(0.5, rim);
-  vec3 rimLight = rimColor * rimStep * 0.4;
+  vec3 rimLight = rimColor * rimStep * 0.3;
 
-  // Ambient
-  vec3 ambient = ambientColor * color * 0.3;
+  // Ambient: combine ambient color with a base contribution
+  vec3 ambient = ambientColor * color * 0.4;
 
   vec3 finalColor = ambient + diffuse + specular + rimLight;
+
+  // Simple tone mapping to avoid harsh clipping
+  finalColor = finalColor / (finalColor + vec3(1.0));
+
   gl_FragColor = vec4(finalColor, 1.0);
 }

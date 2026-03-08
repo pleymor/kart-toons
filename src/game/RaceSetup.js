@@ -49,7 +49,8 @@ export async function startRace(config) {
   });
   toRemove.forEach(obj => renderer.scene.remove(obj));
 
-  // Build track
+  // Set lighting theme and build track
+  renderer.setLightingTheme(circuit.theme);
   buildTrack(renderer, circuit);
 
 
@@ -269,6 +270,9 @@ export async function startRace(config) {
         updateChaseCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
       }
     }
+
+    // Shadow light follows player
+    renderer.updateLightTarget(humanKarts[0].position);
 
     renderer.render();
 
@@ -702,8 +706,103 @@ function buildTrack(renderer, circuit) {
   // Scenery
   buildScenery(renderer, circuit, waypoints, trackWidth);
 
+  // Track-side point lights for varied lighting
+  buildTrackLights(renderer, circuit, waypoints, trackWidth);
+
   if (circuit.palette?.sky) {
     renderer.renderer.setClearColor(circuit.palette.sky.zenith);
+  }
+}
+
+// --- Track-side lighting ---
+
+const _lampPostGeo = new THREE.CylinderGeometry(0.08, 0.12, 5, 6);
+const _lampHeadGeo = new THREE.SphereGeometry(0.25, 8, 6);
+
+function buildTrackLights(renderer, circuit, waypoints, trackWidth) {
+  const theme = (circuit.theme || '').toLowerCase();
+  const n = waypoints.length;
+  const rng = mulberry32((circuit.id?.length || 3) + 99);
+
+  // Theme-specific light configs
+  let lightColor, lightIntensity, lightDist, lampColor, emitColor;
+  let useLampPost = true;
+
+  if (theme.includes('neon') || theme.includes('cyber')) {
+    lightIntensity = 8;
+    lightDist = 25;
+    lampColor = 0x222233;
+    // Alternating neon colors
+    const neonColors = [0x00ffcc, 0xff00ff, 0x00aaff, 0xffaa00];
+    lightColor = () => neonColors[Math.floor(rng() * neonColors.length)];
+    emitColor = lightColor;
+  } else if (theme.includes('volcan') || theme.includes('lava')) {
+    lightColor = () => rng() > 0.5 ? 0xff4400 : 0xff8800;
+    lightIntensity = 6;
+    lightDist = 20;
+    lampColor = 0x443322;
+    emitColor = () => 0xff4400;
+    useLampPost = false; // lava pools, no posts
+  } else if (theme.includes('ocean') || theme.includes('reef')) {
+    lightColor = () => rng() > 0.5 ? 0x00ccff : 0x44ffaa;
+    lightIntensity = 5;
+    lightDist = 22;
+    lampColor = 0x334455;
+    emitColor = lightColor;
+    useLampPost = false; // bioluminescent, no posts
+  } else if (theme.includes('forest') || theme.includes('crystal')) {
+    const forestColors = [0xffdd44, 0x88ff66, 0xaaddff];
+    lightColor = () => forestColors[Math.floor(rng() * forestColors.length)];
+    lightIntensity = 4;
+    lightDist = 18;
+    lampColor = 0x5a3a1a;
+    emitColor = () => 0xffdd44;
+  } else {
+    // Ruins / default: torches
+    lightColor = () => rng() > 0.3 ? 0xffaa44 : 0xff8833;
+    lightIntensity = 5;
+    lightDist = 20;
+    lampColor = 0x3a2a3a;
+    emitColor = () => 0xffaa44;
+  }
+
+  // Place lights every ~4 waypoints on alternating sides
+  const spacing = Math.max(3, Math.floor(n / 20));
+  for (let i = 0; i < n; i += spacing) {
+    const curr = waypoints[i];
+    const next = waypoints[(i + 1) % n];
+    const dx = next.x - curr.x;
+    const dz = next.z - curr.z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    const sideX = -dz / len;
+    const sideZ = dx / len;
+
+    // Alternate sides
+    const side = (i / spacing) % 2 === 0 ? 1 : -1;
+    const dist = trackWidth * 0.6 + 1;
+    const lx = curr.x + sideX * dist * side;
+    const lz = curr.z + sideZ * dist * side;
+    const ly = curr.y;
+
+    const col = typeof lightColor === 'function' ? lightColor() : lightColor;
+
+    // Point light
+    const pointLight = new THREE.PointLight(col, lightIntensity, lightDist);
+    pointLight.position.set(lx, ly + 4, lz);
+    renderer.scene.add(pointLight);
+
+    // Visual lamp post / light source mesh
+    if (useLampPost) {
+      const post = renderer.createToonMesh(_lampPostGeo, lampColor, { outlineWidth: 0.01 });
+      post.position.set(lx, ly + 2.5, lz);
+      renderer.scene.add(post);
+    }
+
+    const emCol = typeof emitColor === 'function' ? emitColor() : emitColor;
+    const headMat = new THREE.MeshBasicMaterial({ color: emCol });
+    const head = new THREE.Mesh(_lampHeadGeo, headMat);
+    head.position.set(lx, ly + (useLampPost ? 5.1 : 1.5), lz);
+    renderer.scene.add(head);
   }
 }
 
