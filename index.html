@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <title>KHAOS KART</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; font-family: 'Rajdhani', sans-serif; }
+    body { touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    #game-canvas { display: block; width: 100vw; height: 100vh; }
+    #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    #ui-overlay > * { pointer-events: auto; }
+
+    /* Responsive UI base */
+    .ui-screen {
+      height: 100%; display: flex; flex-direction: column; align-items: center;
+      padding: clamp(12px, 3vw, 32px);
+      font-family: 'Rajdhani', sans-serif; color: white;
+      background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .ui-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(24px, 6vw, 48px);
+      letter-spacing: clamp(2px, 0.5vw, 6px);
+      text-shadow: 0 0 20px #ff4400, 0 0 40px #ff4400, 0 4px 0 #aa2200;
+      color: #ff6633; text-align: center;
+    }
+    .ui-subtitle {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(14px, 2.5vw, 18px);
+      color: #888; letter-spacing: clamp(2px, 0.3vw, 4px); font-weight: 600;
+    }
+    .ui-heading {
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(14px, 3vw, 20px);
+      color: #ff6633; letter-spacing: 2px; text-align: center;
+    }
+    .ui-btn {
+      padding: clamp(12px, 2vw, 16px) clamp(16px, 4vw, 32px);
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(11px, 2vw, 14px);
+      letter-spacing: 1px; border: 2px solid #ff4400;
+      background: rgba(255, 68, 0, 0.1); color: #ff6633;
+      cursor: pointer; transition: all 0.2s ease; text-transform: uppercase;
+      width: 100%;
+    }
+    .ui-btn:hover:not(:disabled) {
+      background: rgba(255, 68, 0, 0.3); transform: scale(1.03);
+      box-shadow: 0 0 12px rgba(255,68,0,0.4);
+    }
+    .ui-btn:disabled { border-color: #333; color: #555; cursor: not-allowed; }
+    .ui-btn--secondary { border-color: #555; color: #888; background: transparent; }
+    .ui-btn--pulse { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { box-shadow: 0 0 10px #ff4400; } 50% { box-shadow: 0 0 25px #ff4400; } }
+    .ui-card {
+      border: 2px solid #333; padding: clamp(10px, 2vw, 16px); cursor: pointer;
+      background: rgba(0,0,0,0.3); transition: all 0.2s; border-radius: 4px;
+    }
+    .ui-card:hover { border-color: #ff4400; background: rgba(255,68,0,0.1); }
+    .ui-text { font-size: clamp(14px, 2.5vw, 16px); color: #ccc; }
+    .ui-text--sm { font-size: clamp(11px, 2vw, 13px); color: #888; }
+    .ui-text--xs { font-size: clamp(10px, 1.8vw, 12px); color: #666; }
+    .ui-container {
+      width: 100%; max-width: 600px;
+      display: flex; flex-direction: column; gap: clamp(8px, 1.5vw, 12px);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="ui-overlay"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

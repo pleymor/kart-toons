@@ -1,0 +1,386 @@
+import * as THREE from 'three';
+
+const DRIFT_STATE = { NONE: 0, CHARGING: 1 };
+const BOOST_TIERS = [
+  { threshold: 0.5, power: 1.3, duration: 0.5 },
+  { threshold: 1.2, power: 1.6, duration: 0.8 },
+  { threshold: 2.0, power: 2.0, duration: 1.2 }
+];
+
+export class KartController {
+  constructor(physics, characterData, mesh, body) {
+    this.physics = physics;
+    this.character = characterData;
+    this.mesh = mesh;
+    this.body = body;
+
+    // Stats → physics parameters
+    const s = characterData.stats;
+    this.maxSpeed = 50 + s.speed * 8;       // 58-130 units/s
+    this.accelForce = 25 + s.acceleration * 5;
+    this.handling = 0.5 + s.handling * 0.12;  // turn rate
+    this.weightFactor = s.weight;
+    this.drag = 0.98;
+    this.brakePower = 40;
+    this.kartPhysicsType = characterData.kartPhysicsType || 'wheeled';
+
+    // Physics type adjustments
+    if (this.kartPhysicsType === 'levitating') {
+      this.hoverHeight = 0.4;
+      this.drag = 0.975; // slightly more drift
+    } else if (this.kartPhysicsType === 'tracked') {
+      this.handling *= 0.8; // slower turning for tracks
+      this.drag = 0.985;   // more momentum
+    } else if (this.kartPhysicsType === 'hybrid') {
+      this.handling *= 1.1; // drift-assisted turning
+    }
+
+    // State
+    this.position = new THREE.Vector3();
+    this.velocity = new THREE.Vector3();
+    this.speed = 0;
+    this.yaw = 0;
+    this.steerAngle = 0;
+    this.grounded = true;
+    this.surfaceFriction = 1.0;
+    this.surfaceType = 'road';
+    this.falling = false;
+    this.airborne = false; // true when launched (levitateur, ramps)
+    this._groundY = 0;    // track surface Y at current position
+    this.slopeGrade = 0;  // positive = uphill, negative = downhill
+    this.pitchAngle = 0;  // tilt forward/back from slope
+    this._targetPitch = 0;
+    this._respawnPos = new THREE.Vector3();
+    this._respawnYaw = 0;
+
+    // Drift
+    this.driftState = DRIFT_STATE.NONE;
+    this.driftTimer = 0;
+    this.driftDirection = 0;
+    this.driftChargeRate = characterData.passive?.effectModifiers?.driftChargeRate || 1.0;
+
+    // Boost
+    this.boostTimer = 0;
+    this.boostMultiplier = 1.0;
+
+    // Item effects
+    this.speedMultiplier = 1.0;
+    this.controlsReversed = false;
+    this.immobilized = false;
+    this.phaseGhost = false;
+    this.invulnerable = false;
+
+    // Active effects with timers
+    this.activeEffects = [];
+
+    // Forward direction
+    this._forward = new THREE.Vector3();
+    this._tempVec = new THREE.Vector3();
+  }
+
+  update(delta, input) {
+    if (this.immobilized) {
+      this._updateEffects(delta);
+      this._syncMesh();
+      return;
+    }
+
+    // Ground detection
+    this._checkGround();
+
+    // Steering
+    let steerInput = input?.steering || 0;
+    if (this.controlsReversed) steerInput *= -1;
+
+    const speedFactor = Math.min(this.speed / (this.maxSpeed * 0.5), 1.0);
+    const turnRate = this.handling * (1.0 - speedFactor * 0.4);
+
+    if (this.driftState === DRIFT_STATE.CHARGING) {
+      // Drifting: tighter turn in drift direction, less responsive to counter-steer
+      this.yaw -= this.driftDirection * turnRate * 1.4 * delta;
+      this.yaw -= steerInput * turnRate * 0.4 * delta;
+    } else {
+      this.yaw -= steerInput * turnRate * delta;
+    }
+
+    this.steerAngle = steerInput;
+
+    // Forward vector
+    this._forward.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+
+    // Throttle (slope affects acceleration)
+    const throttle = input?.throttle || 0;
+    if (throttle > 0 && this.grounded) {
+      // slopeGrade > 0 = uphill (less accel), < 0 = downhill (more accel)
+      const slopeFactor = 1.0 - this.slopeGrade * 3.0;
+      const accel = this.accelForce * throttle * this.surfaceFriction * Math.max(0.2, slopeFactor);
+      this.velocity.add(this._forward.clone().multiplyScalar(accel * delta));
+    }
+
+    // Gravity along slope (push kart downhill even without throttle)
+    if (this.grounded && Math.abs(this.slopeGrade) > 0.01) {
+      const gravityForce = -this.slopeGrade * 20;
+      this.velocity.add(this._forward.clone().multiplyScalar(gravityForce * delta));
+    }
+
+    // Braking
+    if (input?.brake) {
+      const brakeForce = this.brakePower * delta;
+      this.speed = Math.max(0, this.speed - brakeForce);
+      this.velocity.copy(this._forward).multiplyScalar(this.speed);
+    }
+
+    // Drift logic
+    this._updateDrift(delta, input);
+
+    // Boost
+    this._updateBoost(delta);
+
+    // Apply drag
+    this.velocity.multiplyScalar(this.drag);
+
+    // Clamp horizontal speed
+    const hSpeedSq = this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z;
+    this.speed = Math.sqrt(hSpeedSq);
+    const effectiveMax = this.maxSpeed * this.speedMultiplier * this.boostMultiplier;
+    if (this.speed > effectiveMax) {
+      const scale = effectiveMax / this.speed;
+      this.velocity.x *= scale;
+      this.velocity.z *= scale;
+      this.speed = effectiveMax;
+    }
+
+    if (this.falling || this.airborne) {
+      // Apply gravity when off-road or launched in the air
+      this.velocity.y -= 30 * delta;
+    } else {
+      this.velocity.y = 0;
+    }
+
+    // Move
+    this.position.add(this.velocity.clone().multiplyScalar(delta));
+
+    // Respawn if fallen too far
+    if (this.falling && this.position.y < -20) {
+      this.position.copy(this._respawnPos);
+      this.yaw = this._respawnYaw;
+      this.velocity.set(0, 0, 0);
+      this.speed = 0;
+      this.falling = false;
+      this.grounded = true;
+    }
+
+    // Update effects
+    this._updateEffects(delta);
+
+    // Sync physics body and mesh
+    this._syncBody();
+    this._syncMesh();
+  }
+
+  _checkGround() {
+    // Use circuit waypoints for ground height, interpolated for smooth slopes
+    if (this._circuit) {
+      const wps = this._circuit.waypoints;
+      const trackHalf = (this._circuit.trackWidth || 12) * 0.5;
+      // Find the closest segment (pair of consecutive waypoints)
+      let bestDist = Infinity;
+      let bestY = 0;
+      let bestSegIdx = 0;
+      let bestT = 0;
+      for (let i = 0; i < wps.length; i++) {
+        const a = wps[i];
+        const b = wps[(i + 1) % wps.length];
+        const abx = b.x - a.x;
+        const abz = b.z - a.z;
+        const apx = this.position.x - a.x;
+        const apz = this.position.z - a.z;
+        const abLenSq = abx * abx + abz * abz;
+        const t = abLenSq > 0 ? Math.max(0, Math.min(1, (apx * abx + apz * abz) / abLenSq)) : 0;
+        const cx = a.x + abx * t;
+        const cz = a.z + abz * t;
+        const dx = this.position.x - cx;
+        const dz = this.position.z - cz;
+        const d = dx * dx + dz * dz;
+        if (d < bestDist) {
+          bestDist = d;
+          bestY = a.y + (b.y - a.y) * t;
+          bestSegIdx = i;
+          bestT = t;
+        }
+      }
+
+      const lateralDist = Math.sqrt(bestDist);
+
+      // Save last valid on-road position for respawn
+      if (lateralDist <= trackHalf) {
+        const a = wps[bestSegIdx];
+        const b = wps[(bestSegIdx + 1) % wps.length];
+        this._respawnPos.set(
+          a.x + (b.x - a.x) * bestT,
+          bestY,
+          a.z + (b.z - a.z) * bestT
+        );
+        this._respawnYaw = Math.atan2(b.x - a.x, b.z - a.z);
+      }
+
+      this._groundY = bestY;
+
+      // Compute slope: how much the kart is going uphill or downhill
+      const segA = wps[bestSegIdx];
+      const segB = wps[(bestSegIdx + 1) % wps.length];
+      const segDx = segB.x - segA.x;
+      const segDz = segB.z - segA.z;
+      const segDy = segB.y - segA.y;
+      const segHLen = Math.sqrt(segDx * segDx + segDz * segDz) || 1;
+      // Slope angle as rise/run
+      const segSlope = segDy / segHLen;
+      // Dot with kart forward to determine if going up or down
+      const dotFwd = (this._forward.x * segDx + this._forward.z * segDz) / segHLen;
+      this.slopeGrade = segSlope * dotFwd; // positive = uphill, negative = downhill
+      // Pitch angle: atan of rise/run along kart direction
+      this._targetPitch = Math.atan2(segDy * dotFwd, segHLen * Math.abs(dotFwd) || 1);
+
+      if (lateralDist <= trackHalf + 2) {
+        // On or near road
+        if (this.airborne) {
+          // Launched in the air: don't snap, let gravity bring us down
+          if (this.position.y <= bestY) {
+            // Landed
+            this.airborne = false;
+            this.grounded = true;
+            this.falling = false;
+            this.position.y = bestY;
+            this.velocity.y = 0;
+          } else {
+            this.grounded = false;
+          }
+        } else {
+          // Normal: snap to surface
+          this.grounded = true;
+          this.falling = false;
+          this.position.y = bestY;
+        }
+        this.surfaceFriction = lateralDist <= trackHalf ? 1.0 : 0.6;
+        return;
+      }
+
+      // Off road: start falling
+      this.grounded = false;
+      this.falling = true;
+      this.surfaceFriction = 0.3;
+      return;
+    }
+
+    // Last resort: keep grounded at current Y
+    this.grounded = true;
+    this.surfaceFriction = 1.0;
+  }
+
+  _updateDrift(delta, input) {
+    const driftPressed = input?.drift || false;
+
+    if (driftPressed && this.driftState === DRIFT_STATE.NONE && this.speed > this.maxSpeed * 0.3) {
+      this.driftState = DRIFT_STATE.CHARGING;
+      this.driftDirection = this.steerAngle >= 0 ? 1 : -1;
+      this.driftTimer = 0;
+    }
+
+    if (this.driftState === DRIFT_STATE.CHARGING) {
+      this.driftTimer += delta * this.driftChargeRate;
+
+      if (!driftPressed) {
+        // Release: apply boost based on charge tier
+        let tier = null;
+        for (let i = BOOST_TIERS.length - 1; i >= 0; i--) {
+          if (this.driftTimer >= BOOST_TIERS[i].threshold) {
+            tier = BOOST_TIERS[i];
+            break;
+          }
+        }
+        if (tier) {
+          this.boostTimer = tier.duration;
+          this.boostMultiplier = tier.power;
+        }
+
+        this.driftState = DRIFT_STATE.NONE;
+        this.driftTimer = 0;
+        this.driftDirection = 0;
+      }
+    }
+  }
+
+  _updateBoost(delta) {
+    if (this.boostTimer > 0) {
+      this.boostTimer -= delta;
+      if (this.boostTimer <= 0) {
+        this.boostTimer = 0;
+        this.boostMultiplier = 1.0;
+      }
+    }
+  }
+
+  _updateEffects(delta) {
+    for (let i = this.activeEffects.length - 1; i >= 0; i--) {
+      const effect = this.activeEffects[i];
+      effect.timer -= delta;
+      if (effect.timer <= 0) {
+        // Undo effect
+        if (effect.onEnd) effect.onEnd(this);
+        this.activeEffects.splice(i, 1);
+      }
+    }
+  }
+
+  applyEffect(effect) {
+    if (effect.onStart) effect.onStart(this);
+    this.activeEffects.push(effect);
+  }
+
+  applyKnockback(direction, force) {
+    const knockback = direction.clone().multiplyScalar(force / Math.max(this.weightFactor, 1));
+    this.velocity.add(knockback);
+  }
+
+  setPosition(x, y, z) {
+    this.position.set(x, y, z);
+    this._syncBody();
+    this._syncMesh();
+  }
+
+  setYaw(yaw) {
+    this.yaw = yaw;
+    this._syncMesh();
+  }
+
+  _syncBody() {
+    if (this.body) {
+      this.body.setTranslation({ x: this.position.x, y: this.position.y, z: this.position.z }, true);
+    }
+  }
+
+  _syncMesh() {
+    if (this.mesh) {
+      this.mesh.position.copy(this.position);
+      // Smooth pitch toward target
+      this.pitchAngle += (this._targetPitch - this.pitchAngle) * 0.15;
+
+      this.mesh.rotation.order = 'YXZ';
+      this.mesh.rotation.y = this.yaw;
+      this.mesh.rotation.x = this.pitchAngle;
+      this.mesh.rotation.z = 0;
+    }
+  }
+
+  getState() {
+    return {
+      position: this.position.clone(),
+      velocity: this.velocity.clone(),
+      speed: this.speed,
+      yaw: this.yaw,
+      steerAngle: this.steerAngle,
+      drifting: this.driftState === DRIFT_STATE.CHARGING,
+      grounded: this.grounded
+    };
+  }
+}
