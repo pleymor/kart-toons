@@ -256,13 +256,32 @@ export class ItemSystem {
 
     switch (itemId) {
       case 'boost-nitro': {
-        // Immediate velocity burst + sustained speed multiplier
-        const fwd = new THREE.Vector3(Math.sin(kart.yaw), 0, Math.cos(kart.yaw));
-        kart.velocity.add(fwd.multiplyScalar(kart.maxSpeed * 0.6));
+        // Progressive nitro boost: ramps up, holds, fades out
+        const nitroMult = 1.5;
+        const totalDur = 3;
+        const boostForce = kart.maxSpeed * 0.3;
         kart.applyEffect({
-          timer: 3,
-          onStart: (k) => { k.speedMultiplier = 1.5; },
-          onEnd: (k) => { k.speedMultiplier = 1.0; }
+          timer: totalDur,
+          keepMomentum: true,
+          onStart() {},
+          onTick(k, dt) {
+            const elapsed = totalDur - this.timer;
+            const rampEnd = totalDur * 0.3;
+            const fadeStart = totalDur * 0.7;
+            let t;
+            if (elapsed < rampEnd) {
+              t = elapsed / rampEnd; // linear ramp up
+            } else if (elapsed < fadeStart) {
+              t = 1.0;
+            } else {
+              t = 1.0 - (elapsed - fadeStart) / (totalDur - fadeStart); // linear fade
+            }
+            k.speedMultiplier = Math.max(k.speedMultiplier, 1 + (nitroMult - 1) * t);
+            // Active forward push
+            const fwd = new THREE.Vector3(Math.sin(k.yaw), 0, Math.cos(k.yaw));
+            k.velocity.add(fwd.multiplyScalar(boostForce * t * dt));
+          },
+          onEnd() {}
         });
         break;
       }
@@ -462,8 +481,18 @@ export class ItemSystem {
       case 'cloak':
         kart.applyEffect({
           timer: 8,
-          onStart: (k) => { k._cloaked = true; if (k.mesh) k.mesh.visible = false; },
-          onEnd: (k) => { k._cloaked = false; if (k.mesh) k.mesh.visible = true; }
+          onStart: (k) => {
+            k._cloaked = true;
+            if (k.mesh) k.mesh.traverse(c => {
+              if (c.material) { c.material._prevOpacity = c.material.opacity; c.material._prevTransparent = c.material.transparent; c.material.transparent = true; c.material.opacity = 0.15; }
+            });
+          },
+          onEnd: (k) => {
+            k._cloaked = false;
+            if (k.mesh) k.mesh.traverse(c => {
+              if (c.material) { c.material.opacity = c.material._prevOpacity ?? 1; c.material.transparent = c.material._prevTransparent ?? false; }
+            });
+          }
         });
         break;
 

@@ -371,13 +371,15 @@ export class KartController {
         this._boostFadeTarget = this.boostMultiplier;
       }
     }
-    // Gradual fade-out after boost ends
+    // Gradual fade-out after drift boost ends
     if (this.boostTimer <= 0 && this.boostMultiplier > 1.0) {
-      this.boostMultiplier = Math.max(1.0, this.boostMultiplier - delta * 0.8);
+      this.boostMultiplier = Math.max(1.0, this.boostMultiplier - delta * 0.3);
     }
   }
 
   _updateEffects(delta) {
+    // Reset speedMultiplier each frame — effects push it up via Math.max
+    this.speedMultiplier = 1.0;
     for (let i = this.activeEffects.length - 1; i >= 0; i--) {
       const effect = this.activeEffects[i];
       if (effect.onTick) effect.onTick(this, delta);

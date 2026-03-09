@@ -1397,7 +1397,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
       radius: 3.5,
       mesh: chevronGroup,
       speedMultiplier: 1.6,
-      duration: 6.0
+      duration: 3.0
     });
   }
 
@@ -1451,12 +1451,18 @@ let _boostBlinkTime = 0;
 function checkTrackElements(elements, participants, delta) {
   if (!elements || elements.length === 0) return;
 
-  // Blink boost chevrons
+  // Blink boost chevrons between two blues
   _boostBlinkTime += delta;
-  const blinkOn = Math.sin(_boostBlinkTime * 6) > -0.3; // fast blink, mostly on
+  const blinkT = Math.sin(_boostBlinkTime * 6) * 0.5 + 0.5; // 0→1 oscillation
   for (const el of elements) {
     if (el.type === 'boost' && el.mesh) {
-      el.mesh.visible = blinkOn;
+      el.mesh.traverse(c => {
+        if (c.material && c.material.emissive) {
+          // Lerp between light blue (0x2288ff) and deep blue (0x0044aa)
+          c.material.color.setRGB(0.13 + blinkT * 0.12, 0.27 + blinkT * 0.27, 0.67 + blinkT * 0.33);
+          c.material.emissive.setRGB(0.07 + blinkT * 0.06, 0.27 + blinkT * 0.13, 0.53 + blinkT * 0.33);
+        }
+      });
     }
   }
 
@@ -1494,20 +1500,33 @@ function checkTrackElements(elements, participants, delta) {
         cooldowns.set(cooldownKey, 2.0); // 2s cooldown
 
       } else if (el.type === 'boost') {
-        // Gentle initial burst + sustained multiplier (ramps up over time)
-        const fwd = new THREE.Vector3(Math.sin(kart.yaw), 0, Math.cos(kart.yaw));
-        kart.velocity.add(fwd.multiplyScalar(kart.maxSpeed * 0.12));
+        // Progressive boost: ramps up, holds, fades out
         const mult = el.speedMultiplier;
+        const totalDur = el.duration;
+        const boostForce = kart.maxSpeed * 0.25;
         kart.applyEffect({
-          timer: el.duration,
+          timer: totalDur,
           keepMomentum: true,
-          _rampUp: 0,
-          onStart(k) { /* multiplier applied progressively in onTick */ },
+          onStart() {},
           onTick(k, dt) {
-            this._rampUp = Math.min(1, this._rampUp + dt * 0.8);
-            k.speedMultiplier = Math.max(k.speedMultiplier, 1 + (mult - 1) * this._rampUp);
+            const elapsed = totalDur - this.timer;
+            const rampEnd = totalDur * 0.3;
+            const fadeStart = totalDur * 0.7;
+            let t;
+            if (elapsed < rampEnd) {
+              t = elapsed / rampEnd; // linear ramp up
+            } else if (elapsed < fadeStart) {
+              t = 1.0;
+            } else {
+              t = 1.0 - (elapsed - fadeStart) / (totalDur - fadeStart); // linear fade
+            }
+            // Raise speed cap
+            k.speedMultiplier = Math.max(k.speedMultiplier, 1 + (mult - 1) * t);
+            // Active forward push
+            const fwd = new THREE.Vector3(Math.sin(k.yaw), 0, Math.cos(k.yaw));
+            k.velocity.add(fwd.multiplyScalar(boostForce * t * dt));
           },
-          onEnd(k) { k.speedMultiplier /= mult; }
+          onEnd() {}
         });
         cooldowns.set(cooldownKey, el.duration + 0.5);
 
