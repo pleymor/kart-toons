@@ -54,7 +54,7 @@ export async function startRace(config) {
 
   // Set lighting theme and build track
   renderer.setLightingTheme(circuit.theme);
-  const trackElements = buildTrack(renderer, circuit);
+  const { trackElements, groundPlaneY } = buildTrack(renderer, circuit);
 
 
   // Create participants
@@ -134,6 +134,11 @@ export async function startRace(config) {
     const aiController = new AIController(aiKart, circuit, difficulty);
     aiControllers.push(aiController);
     participants.push({ id: `ai-${i}`, characterId: availableIds[i], kartController: aiKart, isHuman: false });
+  }
+
+  // Set ground plane Y on all karts for off-road ground collision
+  for (const p of participants) {
+    p.kartController._groundPlaneY = groundPlaneY;
   }
 
   // Systems
@@ -382,7 +387,11 @@ function updateCockpitCamera(camera, kart, input) {
   camera.rotation.order = 'YXZ';
   camera.rotation.set(pitchSign * pitch - lookY * 0.8, yaw + yawFlip - lookX * 2.1, 0);
 
-  camera.fov = 85;
+  // Fish-eye effect: FOV increases with speed
+  const speedRatio = Math.min((kart.speed || 0) / (kart.baseMaxSpeed * 0.5 || 80), 2.0);
+  const baseFov = 70;
+  const maxFovBoost = 100;
+  camera.fov = Math.min(150, baseFov + speedRatio * maxFovBoost);
   camera.updateProjectionMatrix();
 }
 
@@ -531,12 +540,6 @@ function buildWheeledKart(renderer, col, acc, weight) {
   const rBumper = renderer.createToonMesh(_rearBumperGeo, 0x333333, { outlineWidth: 0.01 });
   rBumper.position.set(0, 0.28, heavy ? -1.62 : (light ? -1.72 : -1.52));
   group.add(rBumper);
-
-  // Cockpit
-  const cockpitGeo = light ? _sportCockpitGeo : _standardCockpitGeo;
-  const cockpit = renderer.createToonMesh(cockpitGeo, acc, { outlineWidth: 0.03 });
-  cockpit.position.set(0, heavy ? 1.15 : 1.0, -0.2);
-  group.add(cockpit);
 
   // Windshield
   const wsGeo = light ? _sportWindshieldGeo : _windshieldGeo;
@@ -718,10 +721,7 @@ function buildHoverKart(renderer, col, acc) {
     group.add(line);
   }
 
-  // Dome cockpit
-  const dome = renderer.createToonMesh(_domeGeo, acc, { outlineWidth: 0.03 });
-  dome.position.set(0, 1.1, -0.1);
-  group.add(dome);
+  // (dome cockpit removed — obstructs cockpit camera and preview)
 
   // Windshield (curved, angled)
   const ws = renderer.createToonMesh(_sportWindshieldGeo, 0x88ccee, { outlineWidth: 0.01 });
@@ -872,10 +872,7 @@ function buildTrackedKart(renderer, col, acc, weight) {
     group.add(tl);
   }
 
-  // Boxy cockpit (armored)
-  const cockpit = renderer.createToonMesh(_standardCockpitGeo, acc, { outlineWidth: 0.03 });
-  cockpit.position.set(0, 1.2, -0.1);
-  group.add(cockpit);
+  // (armored cockpit removed — obstructs cockpit camera and preview)
 
   // Windshield (narrow slit, armored)
   const ws = renderer.createToonMesh(new THREE.BoxGeometry(1.0, 0.25, 0.06), 0x88aacc, { outlineWidth: 0.01 });
@@ -1025,10 +1022,7 @@ function buildHybridKart(renderer, col, acc) {
   brakeLt.position.set(0, 0.76, -1.42);
   group.add(brakeLt);
 
-  // Dome cockpit
-  const dome = renderer.createToonMesh(_domeGeo, acc, { outlineWidth: 0.03 });
-  dome.position.set(0, 1.0, -0.1);
-  group.add(dome);
+  // (dome cockpit removed — obstructs cockpit camera and preview)
 
   // Windshield
   const ws = renderer.createToonMesh(_sportWindshieldGeo, 0x88bbdd, { outlineWidth: 0.01 });
@@ -1306,7 +1300,7 @@ function buildTrack(renderer, circuit) {
 
   // Track elements: ramps, boosts, slowdowns
   const trackElements = buildTrackElements(renderer, circuit, waypoints);
-  return trackElements;
+  return { trackElements, groundPlaneY: minY - 2 };
 }
 
 // --- Track elements: ramps, boosts, slowdowns ---
@@ -1403,7 +1397,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
       radius: 3.5,
       mesh: chevronGroup,
       speedMultiplier: 1.6,
-      duration: 2.0
+      duration: 6.0
     });
   }
 
@@ -1500,13 +1494,20 @@ function checkTrackElements(elements, participants, delta) {
         cooldowns.set(cooldownKey, 2.0); // 2s cooldown
 
       } else if (el.type === 'boost') {
-        // Immediate velocity burst + sustained multiplier
+        // Gentle initial burst + sustained multiplier (ramps up over time)
         const fwd = new THREE.Vector3(Math.sin(kart.yaw), 0, Math.cos(kart.yaw));
-        kart.velocity.add(fwd.multiplyScalar(kart.maxSpeed * 0.4));
+        kart.velocity.add(fwd.multiplyScalar(kart.maxSpeed * 0.12));
+        const mult = el.speedMultiplier;
         kart.applyEffect({
           timer: el.duration,
-          onStart(k) { k.speedMultiplier *= el.speedMultiplier; },
-          onEnd(k) { k.speedMultiplier /= el.speedMultiplier; }
+          keepMomentum: true,
+          _rampUp: 0,
+          onStart(k) { /* multiplier applied progressively in onTick */ },
+          onTick(k, dt) {
+            this._rampUp = Math.min(1, this._rampUp + dt * 0.8);
+            k.speedMultiplier = Math.max(k.speedMultiplier, 1 + (mult - 1) * this._rampUp);
+          },
+          onEnd(k) { k.speedMultiplier /= mult; }
         });
         cooldowns.set(cooldownKey, el.duration + 0.5);
 

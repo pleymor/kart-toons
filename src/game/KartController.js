@@ -3,9 +3,9 @@ import { getTrackWidthAtSegment } from '../utils/TrackWidth.js';
 
 const DRIFT_STATE = { NONE: 0, CHARGING: 1 };
 const BOOST_TIERS = [
-  { threshold: 0.5, power: 1.3, duration: 0.5 },
-  { threshold: 1.2, power: 1.6, duration: 0.8 },
-  { threshold: 2.0, power: 2.0, duration: 1.2 }
+  { threshold: 0.5, power: 1.3, duration: 1.5 },
+  { threshold: 1.2, power: 1.6, duration: 2.4 },
+  { threshold: 2.0, power: 2.0, duration: 3.6 }
 ];
 
 export class KartController {
@@ -180,14 +180,42 @@ export class KartController {
     // Move
     this.position.add(this.velocity.clone().multiplyScalar(delta));
 
-    // Respawn if fallen too far
-    if (this.falling && this.position.y < -20) {
-      this.position.copy(this._respawnPos);
-      this.yaw = this._respawnYaw;
-      this.velocity.set(0, 0, 0);
-      this.speed = 0;
-      this.falling = false;
-      this.grounded = true;
+    // Off-road: land on ground plane, then respawn after delay
+    if (this.falling) {
+      const gndY = this._groundPlaneY ?? -2;
+      if (this.position.y <= gndY) {
+        this.position.y = gndY;
+        this.velocity.y = 0;
+        this.falling = false;
+        this.grounded = true;
+        this.surfaceFriction = 0.05;
+        // Auto-respawn after 2 seconds on ground
+        if (!this._offRoadTimer) this._offRoadTimer = 0;
+      }
+      if (this.position.y < -50) {
+        // Safety net: respawn immediately if somehow fell through
+        this.position.copy(this._respawnPos);
+        this.yaw = this._respawnYaw;
+        this.velocity.set(0, 0, 0);
+        this.speed = 0;
+        this.falling = false;
+        this.grounded = true;
+        this._offRoadTimer = 0;
+      }
+    }
+    // Respawn timer when sitting on ground off-road
+    if (this.grounded && this.surfaceFriction < 0.1) {
+      this._offRoadTimer = (this._offRoadTimer || 0) + delta;
+      if (this._offRoadTimer >= 2.0) {
+        this.position.copy(this._respawnPos);
+        this.yaw = this._respawnYaw;
+        this.velocity.set(0, 0, 0);
+        this.speed = 0;
+        this.surfaceFriction = 1.0;
+        this._offRoadTimer = 0;
+      }
+    } else {
+      this._offRoadTimer = 0;
     }
 
     // Update effects
@@ -285,10 +313,14 @@ export class KartController {
         return;
       }
 
-      // Off road: start falling
+      // Off road: brake hard and respawn after delay
       this.grounded = false;
       this.falling = true;
-      this.surfaceFriction = 0.3;
+      this.surfaceFriction = 0.05;
+      // Rapidly kill speed
+      this.speed *= 0.92;
+      this.velocity.x *= 0.92;
+      this.velocity.z *= 0.92;
       return;
     }
 
@@ -335,17 +367,22 @@ export class KartController {
       this.boostTimer -= delta;
       if (this.boostTimer <= 0) {
         this.boostTimer = 0;
-        this.boostMultiplier = 1.0;
+        // Start fade-out instead of instant cut
+        this._boostFadeTarget = this.boostMultiplier;
       }
+    }
+    // Gradual fade-out after boost ends
+    if (this.boostTimer <= 0 && this.boostMultiplier > 1.0) {
+      this.boostMultiplier = Math.max(1.0, this.boostMultiplier - delta * 0.8);
     }
   }
 
   _updateEffects(delta) {
     for (let i = this.activeEffects.length - 1; i >= 0; i--) {
       const effect = this.activeEffects[i];
+      if (effect.onTick) effect.onTick(this, delta);
       effect.timer -= delta;
       if (effect.timer <= 0) {
-        // Undo effect
         if (effect.onEnd) effect.onEnd(this);
         this.activeEffects.splice(i, 1);
       }
@@ -355,7 +392,7 @@ export class KartController {
   applyEffect(effect) {
     if (effect.onStart) effect.onStart(this);
     this.activeEffects.push(effect);
-    this._throttleTime = 0; // reset speed buildup on hit
+    if (!effect.keepMomentum) this._throttleTime = 0;
   }
 
   applyKnockback(direction, force) {
