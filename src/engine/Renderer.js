@@ -273,6 +273,26 @@ export class Renderer {
     }
   }
 
+  /**
+   * Render a rearview mirror into a sub-region of the canvas.
+   * Call after render() so it draws on top.
+   * rect: { x, y, w, h } in pixels (bottom-left origin for WebGL).
+   */
+  renderRearview(camera, rect) {
+    this.renderer.setViewport(rect.x, rect.y, rect.w, rect.h);
+    this.renderer.setScissor(rect.x, rect.y, rect.w, rect.h);
+    this.renderer.setScissorTest(true);
+    camera.aspect = rect.w / rect.h;
+    camera.updateProjectionMatrix();
+    // Add temporary fill light so rearview isn't dark
+    if (!this._rearviewLight) {
+      this._rearviewLight = new THREE.AmbientLight(0xffffff, 1.5);
+    }
+    this.scene.add(this._rearviewLight);
+    this.renderer.render(this.scene, camera);
+    this.scene.remove(this._rearviewLight);
+  }
+
   _onResize() {
     const w = window.innerWidth;
     const h = window.innerHeight;

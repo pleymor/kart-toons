@@ -64,11 +64,16 @@
     }
     .ui-card:hover { border-color: #ff4400; background: rgba(255,68,0,0.1); }
     .ui-text { font-size: clamp(14px, 2.5vw, 16px); color: #ccc; }
-    .ui-text--sm { font-size: clamp(11px, 2vw, 13px); color: #888; }
-    .ui-text--xs { font-size: clamp(10px, 1.8vw, 12px); color: #666; }
+    .ui-text--sm { font-size: clamp(12px, 2vw, 13px); color: #888; }
+    .ui-text--xs { font-size: clamp(11px, 1.8vw, 12px); color: #666; }
     .ui-container {
       width: 100%; max-width: 600px;
       display: flex; flex-direction: column; gap: clamp(8px, 1.5vw, 12px);
+    }
+    /* Touch-friendly tap targets */
+    @media (pointer: coarse) {
+      .ui-btn { min-height: 48px; }
+      .ui-card { min-height: 48px; }
     }
   </style>
 </head>

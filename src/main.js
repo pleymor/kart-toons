@@ -122,6 +122,9 @@ async function init() {
   physics = new Physics();
   await physics.init();
   inputManager = new InputManager();
+  inputManager.autoAssignGamepads();
+  // Re-assign when a gamepad connects
+  window.addEventListener('gamepadconnected', () => inputManager.autoAssignGamepads());
   audioEngine = new AudioEngine();
 
   // Auto quality detection
@@ -132,6 +135,7 @@ async function init() {
   if (qualityDetector.isMobile) {
     renderer.applyQuality(settings.quality || 'low');
     inputManager.initTouch();
+    inputManager.initGyroscope();
     const { initOrientationCheck } = await import('./ui/HUD.js');
     initOrientationCheck();
   } else {

@@ -11,6 +11,29 @@ export function init() {
       else open();
     }
   });
+
+  // Gamepad Start button (button 9) to toggle pause
+  let prevStart = false;
+  function pollStartButton() {
+    const gamepads = navigator.getGamepads?.();
+    if (gamepads) {
+      for (let i = 0; i < gamepads.length; i++) {
+        const gp = gamepads[i];
+        if (gp && gp.buttons[9]?.pressed) {
+          if (!prevStart) {
+            if (isOpen) close();
+            else open();
+          }
+          prevStart = true;
+          requestAnimationFrame(pollStartButton);
+          return;
+        }
+      }
+    }
+    prevStart = false;
+    requestAnimationFrame(pollStartButton);
+  }
+  requestAnimationFrame(pollStartButton);
 }
 
 export function open() {

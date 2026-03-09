@@ -1,6 +1,14 @@
 import { getAllCircuits } from '../circuits/index.js';
 import { setScene } from '../main.js';
 import { startRace } from '../game/RaceSetup.js';
+import { startGamepadNav } from './GamepadNav.js';
+
+function highlightCard(cards, index) {
+  cards.forEach((c, i) => {
+    c.style.outline = i === index ? '2px solid #ff6633' : 'none';
+    c.style.outlineOffset = i === index ? '2px' : '0';
+  });
+}
 
 export function show(container, data = {}) {
   const circuits = getAllCircuits();
@@ -29,14 +37,59 @@ export function show(container, data = {}) {
     </div>
   `;
 
-  container.querySelectorAll('.circuit-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const circuitId = card.dataset.id;
-      startRace({ ...data, circuitId });
-    });
+  const cards = [...container.querySelectorAll('.circuit-card')];
+  let focusIndex = 0;
+  highlightCard(cards, focusIndex);
+
+  function selectCircuit(index) {
+    cleanup();
+    const circuitId = cards[index].dataset.id;
+    startRace({ ...data, circuitId });
+  }
+
+  function goBack() {
+    cleanup();
+    setScene('character-select', data);
+  }
+
+  cards.forEach((card, i) => {
+    card.addEventListener('click', () => { selectCircuit(i); });
   });
 
-  container.querySelector('#back-btn').addEventListener('click', () => {
-    setScene('character-select', data);
+  container.querySelector('#back-btn').addEventListener('click', goBack);
+
+  // Keyboard nav
+  const onKey = (e) => {
+    if (e.code === 'ArrowUp' || e.code === 'KeyZ') {
+      focusIndex = (focusIndex - 1 + cards.length) % cards.length;
+      highlightCard(cards, focusIndex);
+    } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+      focusIndex = (focusIndex + 1) % cards.length;
+      highlightCard(cards, focusIndex);
+    } else if (e.code === 'Enter' || e.code === 'Space') {
+      selectCircuit(focusIndex);
+    } else if (e.code === 'Escape' || e.code === 'Backspace') {
+      goBack();
+    }
+  };
+  window.addEventListener('keydown', onKey);
+
+  // Gamepad nav
+  const stopGp = startGamepadNav({
+    onUp: () => {
+      focusIndex = (focusIndex - 1 + cards.length) % cards.length;
+      highlightCard(cards, focusIndex);
+    },
+    onDown: () => {
+      focusIndex = (focusIndex + 1) % cards.length;
+      highlightCard(cards, focusIndex);
+    },
+    onConfirm: () => selectCircuit(focusIndex),
+    onBack: goBack
   });
+
+  function cleanup() {
+    window.removeEventListener('keydown', onKey);
+    stopGp();
+  }
 }

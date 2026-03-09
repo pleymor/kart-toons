@@ -18,42 +18,44 @@ export function show(container) {
       <!-- Position -->
       <div id="hud-position" style="
         position:absolute;top:clamp(8px,2vw,16px);left:clamp(8px,2vw,16px);
-        font-family:'Press Start 2P',monospace;font-size:clamp(20px,5vw,36px);
+        font-family:'Press Start 2P',monospace;font-size:clamp(24px,6vw,36px);
         text-shadow:2px 2px 4px rgba(0,0,0,0.8);
       ">1st</div>
 
       <!-- Lap -->
       <div id="hud-lap" style="
-        position:absolute;top:clamp(8px,2vw,16px);left:50%;transform:translateX(-50%);
-        font-size:clamp(14px,3vw,20px);text-shadow:2px 2px 4px rgba(0,0,0,0.8);
+        position:absolute;top:clamp(36px,9vw,56px);left:clamp(8px,2vw,16px);
+        font-size:clamp(16px,3.5vw,20px);text-shadow:2px 2px 4px rgba(0,0,0,0.8);
       ">Lap 1/3</div>
 
       <!-- Timer -->
       <div id="hud-timer" style="
-        position:absolute;top:clamp(28px,6vw,40px);left:50%;transform:translateX(-50%);
-        font-size:clamp(12px,2.5vw,16px);color:#aaa;
+        position:absolute;top:clamp(58px,14vw,80px);left:clamp(8px,2vw,16px);
+        font-size:clamp(13px,2.5vw,16px);color:#aaa;
       ">0:00.000</div>
 
       <!-- Speed -->
       <div id="hud-speed" style="
         position:absolute;bottom:clamp(8px,2vw,16px);right:clamp(8px,2vw,16px);
-        font-size:clamp(20px,5vw,32px);font-weight:bold;
+        font-size:clamp(24px,6vw,32px);font-weight:bold;
         text-shadow:2px 2px 4px rgba(0,0,0,0.8);
-      ">0 <span style="font-size:clamp(10px,2vw,14px);color:#888;">km/h</span></div>
+      ">0 <span style="font-size:clamp(12px,2.5vw,14px);color:#888;">km/h</span></div>
 
       <!-- Item slot -->
       <div id="hud-item" style="
         position:absolute;top:clamp(8px,2vw,16px);right:clamp(8px,2vw,16px);
-        width:clamp(44px,10vw,64px);height:clamp(44px,10vw,64px);
+        width:clamp(52px,12vw,64px);height:clamp(52px,12vw,64px);
         border:2px solid #555;background:rgba(0,0,0,0.5);border-radius:8px;
         display:flex;align-items:center;justify-content:center;
-        font-size:clamp(9px,2vw,11px);text-align:center;color:#888;
+        font-size:clamp(10px,2.2vw,12px);text-align:center;color:#888;
       ">-</div>
+
+      <!-- Rearview mirror (visual frame only, actual render is on the canvas below) -->
 
       <!-- Minimap -->
       <canvas id="hud-minimap" width="150" height="150" style="
         position:absolute;bottom:clamp(8px,2vw,16px);left:clamp(8px,2vw,16px);
-        width:clamp(80px,18vw,150px);height:clamp(80px,18vw,150px);
+        width:clamp(90px,20vw,150px);height:clamp(90px,20vw,150px);
         border:1px solid #333;background:rgba(0,0,0,0.4);border-radius:4px;
       "></canvas>
     </div>
@@ -100,7 +102,7 @@ export function updateHUD(data) {
 
   // Speed
   const speedEl = hudElement.querySelector('#hud-speed');
-  if (speedEl) speedEl.innerHTML = `${Math.round(speed * 3.6)} <span style="font-size:clamp(10px,2vw,14px);color:#888;">km/h</span>`;
+  if (speedEl) speedEl.innerHTML = `${Math.round(speed * 3.6)} <span style="font-size:clamp(12px,2.5vw,14px);color:#888;">km/h</span>`;
 
   // Item
   const itemEl = hudElement.querySelector('#hud-item');

@@ -6,8 +6,7 @@ const DEFAULT_BINDINGS_P1 = {
   drift: ['Space'],
   useItem: ['KeyF', 'Enter'],
   lookBehind: ['KeyR'],
-  horn: ['KeyT'],
-  cameraToggle: ['KeyC']
+  horn: ['KeyT']
 };
 
 const DEFAULT_BINDINGS_P2 = {
@@ -64,8 +63,7 @@ export class InputManager {
         drift: false,
         useItem: false,
         lookBehind: false,
-        horn: false,
-        cameraToggle: false
+        horn: false
       },
       gamepadIndex: -1
     };
@@ -144,7 +142,6 @@ export class InputManager {
     s.useItem = this._isKeyPressed(b.useItem);
     s.lookBehind = this._isKeyHeld(b.lookBehind);
     s.horn = this._isKeyPressed(b.horn);
-    if (b.cameraToggle) s.cameraToggle = this._isKeyPressed(b.cameraToggle);
   }
 
   _updatePlayerGamepad(player) {
@@ -260,34 +257,49 @@ export class InputManager {
   _createTouchButtons() {
     const btnContainer = document.createElement('div');
     btnContainer.id = 'touch-buttons';
-    btnContainer.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:500;display:flex;flex-direction:column;gap:8px;';
+    btnContainer.style.cssText = `
+      position:fixed;right:12px;bottom:12px;z-index:500;
+      display:grid;grid-template-columns:1fr 1fr;gap:10px;
+    `;
 
     const buttons = [
-      { label: 'GAS', action: 'throttle' },
-      { label: 'BRAKE', action: 'brake' },
-      { label: 'DRIFT', action: 'drift' },
-      { label: 'ITEM', action: 'useItem' }
+      { label: 'DRIFT', action: 'drift', color: '#ffaa00' },
+      { label: 'ITEM', action: 'useItem', color: '#44aaff' },
+      { label: 'BRAKE', action: 'brake', color: '#ff4444' },
+      { label: 'GAS', action: 'throttle', color: '#ff4400' }
     ];
 
     for (const btn of buttons) {
       const el = document.createElement('button');
       el.textContent = btn.label;
-      el.style.cssText = 'width:70px;height:50px;border:2px solid #ff4400;background:rgba(255,68,0,0.2);color:#ff6633;font-weight:bold;font-size:12px;border-radius:8px;touch-action:none;';
+      el.style.cssText = `
+        width:clamp(64px,14vw,90px);height:clamp(64px,14vw,90px);
+        border:3px solid ${btn.color};background:rgba(0,0,0,0.4);
+        color:${btn.color};font-weight:bold;font-size:clamp(11px,2.5vw,15px);
+        border-radius:50%;touch-action:none;
+        font-family:'Rajdhani',sans-serif;letter-spacing:1px;
+      `;
 
-      el.addEventListener('touchstart', (e) => {
+      const activate = (e) => {
         e.preventDefault();
+        el.style.background = `rgba(255,68,0,0.5)`;
         if (btn.action === 'throttle') this._touchState.throttle = 1;
         else if (btn.action === 'brake') this._touchState.brake = true;
         else if (btn.action === 'drift') this._touchState.drift = true;
         else if (btn.action === 'useItem') this._touchState.useItem = true;
-      });
-      el.addEventListener('touchend', (e) => {
+      };
+      const deactivate = (e) => {
         e.preventDefault();
+        el.style.background = 'rgba(0,0,0,0.4)';
         if (btn.action === 'throttle') this._touchState.throttle = 0;
         else if (btn.action === 'brake') this._touchState.brake = false;
         else if (btn.action === 'drift') this._touchState.drift = false;
         else if (btn.action === 'useItem') this._touchState.useItem = false;
-      });
+      };
+
+      el.addEventListener('touchstart', activate);
+      el.addEventListener('touchend', deactivate);
+      el.addEventListener('touchcancel', deactivate);
 
       btnContainer.appendChild(el);
     }

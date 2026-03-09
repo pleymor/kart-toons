@@ -80,6 +80,9 @@ export async function startRace(config) {
     humanCameras.push(renderer.camera);
   }
 
+  // Rearview mirror camera
+  const rearviewCam = new THREE.PerspectiveCamera(95, 4, 0.1, 300);
+
   // Create human karts
   for (let i = 0; i < humanCount; i++) {
     const char = getCharacter(humanCharIds[i]);
@@ -167,9 +170,6 @@ export async function startRace(config) {
     cam.lookAt(kart.position.x, kart.position.y + 1.5, kart.position.z);
   }
 
-  // Camera mode per player: 0=chase, 1=cockpit
-  const cameraModes = new Array(humanCount).fill(0);
-
   let lastTime = performance.now();
 
   function raceLoop(now) {
@@ -194,10 +194,6 @@ export async function startRace(config) {
           itemSystem.useItem(`player-${i}`);
         }
 
-        // Toggle camera mode
-        if (pInput.cameraToggle) {
-          cameraModes[i] = (cameraModes[i] + 1) % 2;
-        }
       }
 
       // Crew mode: driver uses item with P1 input, gunner fires with P2 input
@@ -265,9 +261,8 @@ export async function startRace(config) {
 
     // Update cameras
     if (isCrewMode && turretController) {
-      // Driver: chase cam
       const driverInput = inputManager.getPlayerState(0);
-      updateChaseCamera(humanCameras[0], humanKarts[0], driverInput?.lookBehind);
+      updateCockpitCamera(humanCameras[0], humanKarts[0], driverInput?.lookBehind);
       // Gunner: FPS cam at turret
       const turretPos = turretController.getWorldPosition();
       const turretDir = turretController.getWorldDirection();
@@ -276,11 +271,7 @@ export async function startRace(config) {
     } else {
       for (let i = 0; i < humanKarts.length; i++) {
         const pInput = inputManager.getPlayerState(i);
-        if (cameraModes[i] === 1) {
-          updateCockpitCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
-        } else {
-          updateChaseCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
-        }
+        updateCockpitCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
       }
     }
 
@@ -288,6 +279,25 @@ export async function startRace(config) {
     renderer.updateLightTarget(humanKarts[0].position);
 
     renderer.render();
+
+    // Rearview mirror render
+    if (humanKarts.length > 0) {
+      const kart = humanKarts[0];
+      rearviewCam.position.set(kart.position.x, kart.position.y + 1.6, kart.position.z);
+      _rearviewLookAt.set(
+        kart.position.x - Math.sin(kart.yaw) * 50,
+        kart.position.y + 1.2,
+        kart.position.z - Math.cos(kart.yaw) * 50
+      );
+      rearviewCam.lookAt(_rearviewLookAt);
+      const cw = renderer.canvas.width;
+      const ch = renderer.canvas.height;
+      const mw = Math.round(Math.min(cw * 0.3, 320));
+      const mh = Math.round(mw * 0.25);
+      const mx = Math.round((cw - mw) / 2);
+      const my = ch - mh - Math.round(ch * 0.01);
+      renderer.renderRearview(rearviewCam, { x: mx, y: my, w: mw, h: mh });
+    }
 
     // HUD (show P1 data for now, multi-player HUD is per-viewport overlay)
     const pData = raceManager.getParticipantData('player-0');
@@ -325,47 +335,24 @@ export async function startRace(config) {
   };
 }
 
-const _chaseCamOffset = new THREE.Vector3();
-const _chaseCamTarget = new THREE.Vector3();
-const _chaseCamLookAt = new THREE.Vector3();
-
 const _cockpitLookAt = new THREE.Vector3();
+const _rearviewLookAt = new THREE.Vector3();
 
 function updateCockpitCamera(camera, kart, lookBehind) {
   const sign = lookBehind ? -1 : 1;
-  // Position: inside the kart cockpit, slightly above and forward
   camera.position.set(
     kart.position.x,
     kart.position.y + 1.6,
     kart.position.z
   );
-  // Look far ahead in kart direction
   _cockpitLookAt.set(
     kart.position.x + sign * Math.sin(kart.yaw) * 50,
     kart.position.y + 1.2,
     kart.position.z + sign * Math.cos(kart.yaw) * 50
   );
   camera.lookAt(_cockpitLookAt);
-  camera.fov = 85; // wider FOV for cockpit
+  camera.fov = 85;
   camera.updateProjectionMatrix();
-}
-
-function updateChaseCamera(camera, kart, lookBehind) {
-  const sign = lookBehind ? 1 : -1;
-  _chaseCamOffset.set(
-    sign * Math.sin(kart.yaw) * 12,
-    8,
-    sign * Math.cos(kart.yaw) * 12
-  );
-
-  _chaseCamTarget.copy(kart.position).add(_chaseCamOffset);
-  camera.position.copy(_chaseCamTarget);
-  _chaseCamLookAt.set(kart.position.x, kart.position.y + 1, kart.position.z);
-  camera.lookAt(_chaseCamLookAt);
-  if (camera.fov !== 60) {
-    camera.fov = 60;
-    camera.updateProjectionMatrix();
-  }
 }
 
 // --- Shared kart geometries ---
