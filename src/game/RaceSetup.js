@@ -17,10 +17,12 @@ import groundVert from '../shaders/ground.vert.glsl';
 import groundFrag from '../shaders/ground.frag.glsl';
 import roadVert from '../shaders/road.vert.glsl';
 import roadFrag from '../shaders/road.frag.glsl';
+import { getTrackWidthAtSegment } from '../utils/TrackWidth.js';
 
 let animFrameId = null;
 let raceCleanup = null;
 let shaderUniforms = []; // all time-based shader uniforms to update each frame
+let volcanoParticles = []; // { points, velocities, origins, type } for animated volcano effects
 
 export async function startRace(config) {
   const {
@@ -52,7 +54,7 @@ export async function startRace(config) {
 
   // Set lighting theme and build track
   renderer.setLightingTheme(circuit.theme);
-  buildTrack(renderer, circuit);
+  const trackElements = buildTrack(renderer, circuit);
 
 
   // Create participants
@@ -70,7 +72,7 @@ export async function startRace(config) {
   // Setup split-screen cameras
   if (isCrewMode) {
     // Crew: 2 viewports (driver left, gunner right)
-    const cameras = renderer.setupSplitScreen(2, 'vertical');
+    const cameras = renderer.setupSplitScreen(2, splitOrientation);
     humanCameras.push(...cameras);
   } else if (humanCount > 1) {
     const cameras = renderer.setupSplitScreen(humanCount, splitOrientation);
@@ -101,13 +103,6 @@ export async function startRace(config) {
 
     humanKarts.push(kart);
     participants.push({ id: `player-${i}`, characterId: humanCharIds[i], kartController: kart, isHuman: true });
-  }
-
-  // Hide own kart mesh in cockpit view for each human player
-  for (let i = 0; i < humanKarts.length; i++) {
-    if (renderer.viewports && renderer.viewports[i]) {
-      renderer.viewports[i].hideMesh = humanKarts[i].mesh;
-    }
   }
 
   // Crew mode: attach turret to player kart
@@ -144,6 +139,7 @@ export async function startRace(config) {
   // Systems
   const raceManager = new RaceManager(circuit, participants);
   const itemSystem = new ItemSystem(renderer.scene, circuit, participants);
+  itemSystem.listenerPos = humanKarts[0]?.position || null;
   const weatherSystem = new WeatherSystem(renderer.scene, circuit, renderer);
 
   // Set main.js state
@@ -232,6 +228,9 @@ export async function startRace(config) {
       // Kart-to-kart collisions
       resolveKartCollisions(participants);
 
+      // Track elements (ramps, boosts, slowdowns)
+      checkTrackElements(trackElements, participants, delta);
+
       // Systems
       itemSystem.update(delta);
       weatherSystem.update(delta, participants);
@@ -270,10 +269,15 @@ export async function startRace(config) {
       u.time.value += delta;
     }
 
+    // Animate volcano particles
+    for (const vp of volcanoParticles) {
+      _updateVolcanoParticles(vp, delta);
+    }
+
     // Update cameras
     if (isCrewMode && turretController) {
       const driverInput = inputManager.getPlayerState(0);
-      updateCockpitCamera(humanCameras[0], humanKarts[0], driverInput?.lookBehind);
+      updateCockpitCamera(humanCameras[0], humanKarts[0], driverInput);
       // Gunner: FPS cam at turret
       const turretPos = turretController.getWorldPosition();
       const turretDir = turretController.getWorldDirection();
@@ -282,7 +286,7 @@ export async function startRace(config) {
     } else {
       for (let i = 0; i < humanKarts.length; i++) {
         const pInput = inputManager.getPlayerState(i);
-        updateCockpitCamera(humanCameras[i], humanKarts[i], pInput?.lookBehind);
+        updateCockpitCamera(humanCameras[i], humanKarts[i], pInput);
       }
     }
 
@@ -291,7 +295,7 @@ export async function startRace(config) {
 
     renderer.render();
 
-    // Rearview mirror render
+    // Rearview mirror render (hide weather particles to avoid oversized appearance)
     if (humanKarts.length > 0) {
       const kart = humanKarts[0];
       rearviewCam.position.set(kart.position.x, kart.position.y + 1.6, kart.position.z);
@@ -307,9 +311,9 @@ export async function startRace(config) {
       const mh = Math.round(mw * 0.25);
       const mx = Math.round((cw - mw) / 2);
       const my = ch - mh - Math.round(ch * 0.01);
-      kart.mesh.visible = false;
+      if (weatherSystem.particles) weatherSystem.particles.visible = false;
       renderer.renderRearview(rearviewCam, { x: mx, y: my, w: mw, h: mh });
-      kart.mesh.visible = true;
+      if (weatherSystem.particles) weatherSystem.particles.visible = true;
     }
 
     // HUD (show P1 data for now, multi-player HUD is per-viewport overlay)
@@ -348,29 +352,36 @@ export async function startRace(config) {
   };
 }
 
-const _cockpitLookAt = new THREE.Vector3();
 const _rearviewLookAt = new THREE.Vector3();
+const _camEuler = new THREE.Euler();
+const _camOffset = new THREE.Vector3();
 
-function updateCockpitCamera(camera, kart, lookBehind) {
-  const sign = lookBehind ? -1 : 1;
+function updateCockpitCamera(camera, kart, input) {
+  const lookBehind = input?.lookBehind || false;
+  const lookX = input?.lookX || 0;
+  const lookY = input?.lookY || 0;
   const pitch = kart.pitchAngle || 0;
-  // Camera position: offset up from kart, tilted with pitch
-  const upY = Math.cos(pitch) * 1.6;
-  const upZ = Math.sin(pitch) * 1.6;
+  const yaw = kart.yaw;
+
+  // Copy orientation directly from kart mesh (YXZ order like the mesh)
+  _camEuler.set(pitch, yaw, 0, 'YXZ');
+
+  // Offset camera up in kart's local space, then to world
+  _camOffset.set(0, 1.8, 0);
+  _camOffset.applyEuler(_camEuler);
   camera.position.set(
-    kart.position.x,
-    kart.position.y + upY,
-    kart.position.z - sign * upZ
+    kart.position.x + _camOffset.x,
+    kart.position.y + _camOffset.y,
+    kart.position.z + _camOffset.z
   );
-  // Look direction follows yaw + pitch
-  const fwd = 50;
-  const lookY = kart.position.y + upY + Math.sin(pitch) * fwd * sign;
-  _cockpitLookAt.set(
-    kart.position.x + sign * Math.sin(kart.yaw) * fwd,
-    lookY,
-    kart.position.z + sign * Math.cos(kart.yaw) * fwd
-  );
-  camera.lookAt(_cockpitLookAt);
+
+  // Apply kart rotation + stick look offsets + look behind
+  const behind = lookBehind;
+  const yawFlip = behind ? 0 : Math.PI;
+  const pitchSign = behind ? 1 : -1;
+  camera.rotation.order = 'YXZ';
+  camera.rotation.set(pitchSign * pitch - lookY * 0.8, yaw + yawFlip - lookX * 2.1, 0);
+
   camera.fov = 85;
   camera.updateProjectionMatrix();
 }
@@ -1198,12 +1209,29 @@ function buildTrack(renderer, circuit) {
   const theme = circuit.theme?.toLowerCase() || '';
   const { biome, baseColor, accentColor } = getThemeColors(theme, circuit.palette);
 
+  // Fog parameters per theme
+  let fogColor, fogNear, fogFar;
+  if (theme.includes('volcan') || theme.includes('lava')) {
+    fogColor = new THREE.Vector3(0.2, 0.13, 0.07); fogNear = 120; fogFar = 350;
+  } else if (theme.includes('ocean') || theme.includes('reef')) {
+    fogColor = new THREE.Vector3(0.04, 0.13, 0.27); fogNear = 100; fogFar = 300;
+  } else if (theme.includes('neon') || theme.includes('cyber')) {
+    fogColor = new THREE.Vector3(0.07, 0.0, 0.13); fogNear = 100; fogFar = 320;
+  } else if (theme.includes('forest') || theme.includes('crystal')) {
+    fogColor = new THREE.Vector3(0.53, 0.67, 0.8); fogNear = 150; fogFar = 400;
+  } else {
+    fogColor = new THREE.Vector3(0.4, 0.47, 0.53); fogNear = 150; fogFar = 400;
+  }
+
   // Road shader uniforms (shared across all segments)
   const roadUniforms = {
     baseColor: { value: new THREE.Vector3(0.33, 0.33, 0.33) },
     lineColor: { value: new THREE.Vector3(1.0, 1.0, 1.0) },
     time: { value: 0 },
-    roadStyle: { value: biome }
+    roadStyle: { value: biome },
+    fogColor: { value: fogColor },
+    fogNear: { value: fogNear },
+    fogFar: { value: fogFar }
   };
 
   // Override road base color from palette
@@ -1222,11 +1250,12 @@ function buildTrack(renderer, circuit) {
     vertexShader: roadVert,
     fragmentShader: roadFrag,
     uniforms: roadUniforms,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    transparent: true
   });
 
   // Build a single continuous track mesh with smooth corners
-  const trackMesh = buildContinuousTrackMesh(waypoints, trackWidth, roadMat);
+  const trackMesh = buildContinuousTrackMesh(waypoints, trackWidth, roadMat, circuit);
   trackMesh.receiveShadow = true;
   renderer.scene.add(trackMesh);
 
@@ -1235,7 +1264,10 @@ function buildTrack(renderer, circuit) {
     baseColor: { value: baseColor },
     accentColor: { value: accentColor },
     time: { value: 0 },
-    biome: { value: biome }
+    biome: { value: biome },
+    fogColor: { value: fogColor },
+    fogNear: { value: fogNear },
+    fogFar: { value: fogFar }
   };
   shaderUniforms.push(groundUniforms);
 
@@ -1260,17 +1292,235 @@ function buildTrack(renderer, circuit) {
   renderer.scene.add(ground);
 
   // Scenery
-  buildScenery(renderer, circuit, waypoints, trackWidth);
+  buildScenery(renderer, circuit, waypoints);
 
   // Track-side point lights for varied lighting
-  buildTrackLights(renderer, circuit, waypoints, trackWidth);
+  buildTrackLights(renderer, circuit, waypoints);
 
-  if (circuit.palette?.sky) {
-    renderer.renderer.setClearColor(circuit.palette.sky.zenith);
-  }
+  // Set clear color to fog color for seamless horizon
+  const fogHex = (Math.round(fogColor.x * 255) << 16) | (Math.round(fogColor.y * 255) << 8) | Math.round(fogColor.z * 255);
+  renderer.renderer.setClearColor(fogHex);
 
   // Sky dome
   buildSkyDome(renderer, circuit, shaderUniforms);
+
+  // Track elements: ramps, boosts, slowdowns
+  const trackElements = buildTrackElements(renderer, circuit, waypoints);
+  return trackElements;
+}
+
+// --- Track elements: ramps, boosts, slowdowns ---
+
+function buildTrackElements(renderer, circuit, waypoints) {
+  const elements = [];
+  const n = waypoints.length;
+  const trackWidth = circuit.trackWidth || 12;
+
+  // Deterministic seed from circuit id
+  let seed = 0;
+  for (let i = 0; i < (circuit.id || '').length; i++) seed += circuit.id.charCodeAt(i);
+  const rng = mulberry32(seed + 42);
+
+  // Ramps: 3-4 per circuit, every ~18-22 waypoints
+  const rampStep = Math.floor(n / 4);
+  for (let k = 0; k < 3; k++) {
+    const idx = Math.min(n - 2, Math.floor(rampStep * (k + 0.5) + rng() * 4 - 2));
+    const wp = waypoints[idx];
+    const next = waypoints[(idx + 1) % n];
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const segLen = Math.sqrt(dx * dx + dz * dz) || 1;
+    const yaw = Math.atan2(dx, dz);
+
+    // Ramp mesh: a tilted box (wedge)
+    const rampGroup = new THREE.Group();
+    const rampGeo = new THREE.BoxGeometry(4, 0.3, 3);
+    const rampMat = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: 0.6 });
+    const rampMesh = new THREE.Mesh(rampGeo, rampMat);
+    rampMesh.rotation.x = -0.25; // tilt upward
+    rampMesh.position.y = 0.6;
+    rampGroup.add(rampMesh);
+
+    // Stripes on ramp
+    for (let s = -1; s <= 1; s++) {
+      const stripeGeo = new THREE.BoxGeometry(0.3, 0.32, 3.02);
+      const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.5 });
+      const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+      stripe.rotation.x = -0.25;
+      stripe.position.set(s * 1.2, 0.62, 0);
+      rampGroup.add(stripe);
+    }
+
+    rampGroup.position.set(wp.x, wp.y, wp.z);
+    rampGroup.rotation.y = yaw;
+    renderer.scene.add(rampGroup);
+
+    elements.push({
+      type: 'ramp',
+      position: wp.clone(),
+      radius: 3.5,
+      mesh: rampGroup,
+      launchVelocity: 18
+    });
+  }
+
+  // Boost arrows: 2-3 per circuit
+  const boostStep = Math.floor(n / 3);
+  for (let k = 0; k < 3; k++) {
+    const idx = Math.min(n - 2, Math.floor(boostStep * (k + 0.3) + rng() * 3));
+    const wp = waypoints[idx];
+    const next = waypoints[(idx + 1) % n];
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const yaw = Math.atan2(dx, dz);
+
+    // Blue chevrons (3 V-shapes in a row, flat on the road)
+    const chevronGroup = new THREE.Group();
+    const chevronMat = new THREE.MeshStandardMaterial({
+      color: 0x2288ff, emissive: 0x1166dd, emissiveIntensity: 1.0,
+      roughness: 0.2, side: THREE.DoubleSide
+    });
+
+    for (let c = 0; c < 3; c++) {
+      // Each chevron = 2 angled planes forming a V
+      for (const side of [-1, 1]) {
+        const stripGeo = new THREE.PlaneGeometry(2.0, 0.5);
+        const strip = new THREE.Mesh(stripGeo, chevronMat);
+        strip.rotation.x = -Math.PI / 2;
+        strip.rotation.z = side * 0.5; // angle to form V
+        strip.position.set(side * 0.85, 0.06, -c * 2.0);
+        chevronGroup.add(strip);
+      }
+    }
+
+    chevronGroup.position.set(wp.x, wp.y, wp.z);
+    chevronGroup.rotation.y = yaw;
+    renderer.scene.add(chevronGroup);
+
+    elements.push({
+      type: 'boost',
+      position: wp.clone(),
+      radius: 3.5,
+      mesh: chevronGroup,
+      speedMultiplier: 1.6,
+      duration: 2.0
+    });
+  }
+
+  // Slowdown zones: 2-3 per circuit
+  const slowStep = Math.floor(n / 3);
+  for (let k = 0; k < 2; k++) {
+    // Offset from boosts so they don't overlap
+    const idx = Math.min(n - 2, Math.floor(slowStep * (k + 0.8) + rng() * 3));
+    const wp = waypoints[idx];
+    const next = waypoints[(idx + 1) % n];
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const yaw = Math.atan2(dx, dz);
+
+    const slowGroup = new THREE.Group();
+
+    // Red/white striped rumble strip
+    const stripCount = 5;
+    for (let s = 0; s < stripCount; s++) {
+      const stripGeo = new THREE.PlaneGeometry(trackWidth * 0.6, 0.6);
+      const isRed = s % 2 === 0;
+      const stripMat = new THREE.MeshStandardMaterial({
+        color: isRed ? 0xdd2222 : 0xeeeeee, roughness: 0.7, side: THREE.DoubleSide
+      });
+      const strip = new THREE.Mesh(stripGeo, stripMat);
+      strip.rotation.x = -Math.PI / 2;
+      strip.position.set(0, 0.04, (s - 2) * 0.7);
+      slowGroup.add(strip);
+    }
+
+    slowGroup.position.set(wp.x, wp.y, wp.z);
+    slowGroup.rotation.y = yaw;
+    renderer.scene.add(slowGroup);
+
+    elements.push({
+      type: 'slowdown',
+      position: wp.clone(),
+      radius: 3.5,
+      mesh: slowGroup,
+      speedFactor: 0.7
+    });
+  }
+
+  return elements;
+}
+
+// Cooldown tracker for track element interactions (per kart, per element)
+const _elementCooldowns = new WeakMap();
+
+let _boostBlinkTime = 0;
+function checkTrackElements(elements, participants, delta) {
+  if (!elements || elements.length === 0) return;
+
+  // Blink boost chevrons
+  _boostBlinkTime += delta;
+  const blinkOn = Math.sin(_boostBlinkTime * 6) > -0.3; // fast blink, mostly on
+  for (const el of elements) {
+    if (el.type === 'boost' && el.mesh) {
+      el.mesh.visible = blinkOn;
+    }
+  }
+
+  for (const p of participants) {
+    const kart = p.kartController;
+    if (!kart) continue;
+
+    // Get or create cooldown map for this kart
+    if (!_elementCooldowns.has(kart)) _elementCooldowns.set(kart, new Map());
+    const cooldowns = _elementCooldowns.get(kart);
+
+    // Tick down cooldowns
+    for (const [key, val] of cooldowns) {
+      cooldowns.set(key, val - delta);
+      if (val - delta <= 0) cooldowns.delete(key);
+    }
+
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i];
+      const dx = kart.position.x - el.position.x;
+      const dz = kart.position.z - el.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist > el.radius) continue;
+
+      // Check cooldown to avoid repeated triggering
+      const cooldownKey = i;
+      if (cooldowns.has(cooldownKey)) continue;
+
+      if (el.type === 'ramp') {
+        // Launch kart upward
+        kart.airborne = true;
+        kart.grounded = false;
+        kart.velocity.y = el.launchVelocity;
+        cooldowns.set(cooldownKey, 2.0); // 2s cooldown
+
+      } else if (el.type === 'boost') {
+        // Immediate velocity burst + sustained multiplier
+        const fwd = new THREE.Vector3(Math.sin(kart.yaw), 0, Math.cos(kart.yaw));
+        kart.velocity.add(fwd.multiplyScalar(kart.maxSpeed * 0.4));
+        kart.applyEffect({
+          timer: el.duration,
+          onStart(k) { k.speedMultiplier *= el.speedMultiplier; },
+          onEnd(k) { k.speedMultiplier /= el.speedMultiplier; }
+        });
+        cooldowns.set(cooldownKey, el.duration + 0.5);
+
+      } else if (el.type === 'slowdown') {
+        // Reduce speed momentarily
+        kart.speed *= el.speedFactor;
+        const velScale = el.speedFactor;
+        kart.velocity.x *= velScale;
+        kart.velocity.z *= velScale;
+        kart._throttleTime = Math.max(0, kart._throttleTime - 0.5);
+        cooldowns.set(cooldownKey, 1.5);
+      }
+    }
+  }
 }
 
 // --- Track-side lighting ---
@@ -1278,7 +1528,8 @@ function buildTrack(renderer, circuit) {
 const _lampPostGeo = new THREE.CylinderGeometry(0.08, 0.12, 5, 6);
 const _lampHeadGeo = new THREE.SphereGeometry(0.25, 8, 6);
 
-function buildTrackLights(renderer, circuit, waypoints, trackWidth) {
+function buildTrackLights(renderer, circuit, waypoints) {
+  const trackWidth = circuit.trackWidth || 12;
   const theme = (circuit.theme || '').toLowerCase();
   const n = waypoints.length;
   const rng = mulberry32((circuit.id?.length || 3) + 99);
@@ -1338,7 +1589,8 @@ function buildTrackLights(renderer, circuit, waypoints, trackWidth) {
 
     // Alternate sides
     const side = (i / spacing) % 2 === 0 ? 1 : -1;
-    const dist = trackWidth * 0.6 + 1;
+    const localWidth = getTrackWidthAtSegment(circuit, i, 0);
+    const dist = localWidth * 0.6 + 1;
     const lx = curr.x + sideX * dist * side;
     const lz = curr.z + sideZ * dist * side;
     const ly = curr.y;
@@ -1408,13 +1660,22 @@ function buildSkyDome(renderer, circuit, shaderUniforms) {
         for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.0; a *= 0.5; }
         return v;
       }
+      float fbm6(vec2 p) {
+        float v = 0.0; float a = 0.5;
+        for (int i = 0; i < 6; i++) { v += a * noise(p); p *= 2.0; a *= 0.5; }
+        return v;
+      }
 
       void main() {
         vec3 dir = normalize(vWorldPos);
         float h = dir.y * 0.5 + 0.5; // 0=horizon, 1=zenith
 
-        // Gradient
-        vec3 col = mix(horizonColor, zenithColor, smoothstep(0.0, 0.7, h));
+        // Add noise variation to break up the base gradient
+        float gradientNoise = fbm(dir.xz * 2.0 + 0.5) * 0.06;
+        float hPerturbed = clamp(h + gradientNoise, 0.0, 1.0);
+
+        // Gradient with noise perturbation
+        vec3 col = mix(horizonColor, zenithColor, smoothstep(0.0, 0.7, hPerturbed));
 
         // Sun/moon glow
         vec3 sunDir = normalize(vec3(0.4, 0.6, 0.3));
@@ -1463,15 +1724,38 @@ function buildSkyDome(renderer, circuit, shaderUniforms) {
           // Forest: sunny sky with fluffy clouds
           col += vec3(1.0, 0.9, 0.7) * pow(sunDot, 32.0) * 0.8; // sun
           col += vec3(0.8, 0.7, 0.5) * pow(sunDot, 4.0) * 0.2;  // halo
-          // Clouds
+
+          // Main cumulus clouds (6-octave fbm for more detail)
           vec2 cloudUV = dir.xz / max(dir.y, 0.01) * 0.15;
-          float cloud = fbm(cloudUV + time * 0.008);
-          cloud = smoothstep(0.4, 0.7, cloud);
-          col = mix(col, vec3(1.0, 0.98, 0.95), cloud * 0.7 * smoothstep(0.2, 0.6, h));
+          float cloud = fbm6(cloudUV + time * 0.008);
+          cloud = smoothstep(0.35, 0.7, cloud);
+          float cloudMask = cloud * 0.75 * smoothstep(0.2, 0.6, h);
+
+          // Cloud shadows: darken areas below clouds slightly
+          float cloudShadow = fbm6(cloudUV * 0.9 + vec2(0.02, 0.04) + time * 0.008);
+          cloudShadow = smoothstep(0.4, 0.75, cloudShadow);
+          col *= 1.0 - cloudShadow * 0.12 * smoothstep(0.15, 0.45, h);
+
+          // Apply main clouds on top
+          col = mix(col, vec3(1.0, 0.98, 0.95), cloudMask);
+
+          // High-altitude cirrus wisps (thin, stretched)
+          vec2 cirrusUV = dir.xz / max(dir.y, 0.01) * 0.04;
+          float cirrus = fbm6(cirrusUV * vec2(3.0, 1.0) + time * 0.012);
+          cirrus = smoothstep(0.48, 0.65, cirrus) * smoothstep(0.55, 0.85, h);
+          col = mix(col, vec3(1.0, 0.99, 0.96), cirrus * 0.35);
+
+          // Secondary wispy layer at different scale
+          float wisp = fbm(cirrusUV * vec2(5.0, 1.5) + vec2(time * 0.006, 3.0));
+          wisp = smoothstep(0.52, 0.68, wisp) * smoothstep(0.6, 0.9, h);
+          col = mix(col, vec3(1.0, 0.98, 0.94), wisp * 0.2);
         }
 
-        // Horizon haze
-        col = mix(col, horizonColor * 1.2, smoothstep(0.15, 0.0, h) * 0.5);
+        // Horizon fog/haze band for depth (enhanced)
+        vec3 hazeColor = horizonColor * 1.15 + vec3(0.05, 0.05, 0.08);
+        float hazeBand = smoothstep(0.18, 0.0, h);
+        float hazeNoise = fbm(dir.xz * 4.0 + time * 0.005) * 0.15;
+        col = mix(col, hazeColor, (hazeBand + hazeNoise * smoothstep(0.25, 0.0, h)) * 0.6);
 
         gl_FragColor = vec4(col, 1.0);
       }
@@ -1508,8 +1792,12 @@ const _bannerGeo = new THREE.PlaneGeometry(1.5, 0.8);
 const _crateStackGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
 const _signGeo = new THREE.BoxGeometry(1.5, 1.0, 0.1);
 const _hologramGeo = new THREE.IcosahedronGeometry(1.5, 0);
+const _volcanoConeGeo = new THREE.ConeGeometry(1, 1.6, 8);
+const _volcanoCraterGeo = new THREE.TorusGeometry(0.35, 0.12, 6, 8);
+const _volcanoRimGeo = new THREE.CylinderGeometry(0.4, 0.55, 0.2, 8);
 
-function buildScenery(renderer, circuit, waypoints, trackWidth) {
+function buildScenery(renderer, circuit, waypoints) {
+  const trackWidth = circuit.trackWidth || 12;
   const theme = circuit.theme?.toLowerCase() || '';
   const p = circuit.palette || {};
   const rng = mulberry32(circuit.id?.length || 7);
@@ -1528,10 +1816,14 @@ function buildScenery(renderer, circuit, waypoints, trackWidth) {
     // Place on both sides
     for (const side of [-1, 1]) {
       if (rng() > 0.6) continue; // skip some for variation
-      const dist = trackWidth * 0.7 + rng() * 15;
+      const localWidth = getTrackWidthAtSegment(circuit, i, 0);
+      const baseDist = localWidth * 0.9 + 3;
+      const dist = baseDist + 4 + rng() * 18;
       const x = curr.x + sideX * dist * side;
       const z = curr.z + sideZ * dist * side;
-      const y = curr.y;
+      // Fade prop height toward ground when far from track to avoid floating objects
+      const distRatio = Math.min(1, (dist - baseDist) / 20);
+      const y = curr.y * (1 - distRatio * 0.85);
 
       placeSceneryProp(renderer, theme, p, x, y, z, rng);
     }
@@ -1549,6 +1841,114 @@ function buildScenery(renderer, circuit, waypoints, trackWidth) {
     const z = center.z + Math.sin(angle) * dist;
     placeSceneryProp(renderer, theme, p, x, -1, z, rng);
   }
+
+  // Volcano mountains (distant only, lava biome)
+  volcanoParticles = [];
+  if (theme.includes('volcan') || theme.includes('lava')) {
+    for (let i = 0; i < 8; i++) {
+      const angle = rng() * Math.PI * 2;
+      const dist = 150 + rng() * 250;
+      const x = center.x + Math.cos(angle) * dist;
+      const z = center.z + Math.sin(angle) * dist;
+      const vScale = 8 + rng() * 16;
+      const cone = renderer.createToonMesh(_volcanoConeGeo, 0x3a2a1a, { outlineWidth: 0.03 });
+      cone.position.set(x, vScale * 0.8, z);
+      cone.scale.set(vScale, vScale, vScale);
+      renderer.scene.add(cone);
+      const rim = renderer.createToonMesh(_volcanoRimGeo, 0x2a1a0a, { outlineWidth: 0.02 });
+      rim.position.set(x, vScale * 1.58, z);
+      rim.scale.set(vScale * 0.7, vScale * 0.5, vScale * 0.7);
+      renderer.scene.add(rim);
+      const crater = renderer.createToonMesh(_volcanoCraterGeo, 0xff3300, { outlineWidth: 0 });
+      crater.position.set(x, vScale * 1.55, z);
+      crater.rotation.x = Math.PI / 2;
+      crater.scale.set(vScale * 0.6, vScale * 0.6, vScale * 0.4);
+      if (crater.children[0]?.material) {
+        crater.children[0].material.emissive = new THREE.Color(0xff2200);
+        crater.children[0].material.emissiveIntensity = 0.8;
+      }
+      renderer.scene.add(crater);
+
+      // Lava eruption particles
+      const lavaCount = 30;
+      const lavaPos = new Float32Array(lavaCount * 3);
+      const lavaVel = new Float32Array(lavaCount * 3);
+      const craterY = vScale * 1.6;
+      for (let j = 0; j < lavaCount; j++) {
+        _initLavaParticle(lavaPos, lavaVel, j, x, craterY, z, vScale);
+      }
+      const lavaGeo = new THREE.BufferGeometry();
+      lavaGeo.setAttribute('position', new THREE.BufferAttribute(lavaPos, 3));
+      const lavaMat = new THREE.PointsMaterial({ color: 0xff4400, size: 1.5, transparent: true, opacity: 0.9 });
+      const lavaPoints = new THREE.Points(lavaGeo, lavaMat);
+      renderer.scene.add(lavaPoints);
+      volcanoParticles.push({ points: lavaPoints, velocities: lavaVel, origin: { x, y: craterY, z }, scale: vScale, type: 'lava', count: lavaCount });
+
+      // Smoke particles
+      const smokeCount = 20;
+      const smokePos = new Float32Array(smokeCount * 3);
+      const smokeVel = new Float32Array(smokeCount * 3);
+      for (let j = 0; j < smokeCount; j++) {
+        _initSmokeParticle(smokePos, smokeVel, j, x, craterY, z, vScale);
+      }
+      const smokeGeo = new THREE.BufferGeometry();
+      smokeGeo.setAttribute('position', new THREE.BufferAttribute(smokePos, 3));
+      const smokeMat = new THREE.PointsMaterial({ color: 0x555555, size: 4, transparent: true, opacity: 0.35 });
+      const smokePoints = new THREE.Points(smokeGeo, smokeMat);
+      renderer.scene.add(smokePoints);
+      volcanoParticles.push({ points: smokePoints, velocities: smokeVel, origin: { x, y: craterY, z }, scale: vScale, type: 'smoke', count: smokeCount });
+    }
+  }
+}
+
+function _initLavaParticle(pos, vel, i, ox, oy, oz, scale) {
+  const spread = scale * 0.15;
+  pos[i * 3] = ox + (Math.random() - 0.5) * spread;
+  pos[i * 3 + 1] = oy + Math.random() * scale * 0.5;
+  pos[i * 3 + 2] = oz + (Math.random() - 0.5) * spread;
+  vel[i * 3] = (Math.random() - 0.5) * 3;
+  vel[i * 3 + 1] = 4 + Math.random() * 8;
+  vel[i * 3 + 2] = (Math.random() - 0.5) * 3;
+}
+
+function _initSmokeParticle(pos, vel, i, ox, oy, oz, scale) {
+  const spread = scale * 0.3;
+  pos[i * 3] = ox + (Math.random() - 0.5) * spread;
+  pos[i * 3 + 1] = oy + Math.random() * scale * 1.5;
+  pos[i * 3 + 2] = oz + (Math.random() - 0.5) * spread;
+  vel[i * 3] = (Math.random() - 0.5) * 1.5;
+  vel[i * 3 + 1] = 2 + Math.random() * 3;
+  vel[i * 3 + 2] = (Math.random() - 0.5) * 1.5;
+}
+
+function _updateVolcanoParticles(vp, delta) {
+  const pos = vp.points.geometry.attributes.position.array;
+  const vel = vp.velocities;
+  const o = vp.origin;
+  const maxH = o.y + vp.scale * 2.5;
+
+  for (let i = 0; i < vp.count; i++) {
+    pos[i * 3] += vel[i * 3] * delta;
+    pos[i * 3 + 1] += vel[i * 3 + 1] * delta;
+    pos[i * 3 + 2] += vel[i * 3 + 2] * delta;
+
+    if (vp.type === 'lava') {
+      // Gravity
+      vel[i * 3 + 1] -= 6 * delta;
+      // Reset when fallen below crater
+      if (pos[i * 3 + 1] < o.y - 2) {
+        _initLavaParticle(pos, vel, i, o.x, o.y, o.z, vp.scale);
+      }
+    } else {
+      // Smoke: slow drift, expand, reset at top
+      vel[i * 3] += (Math.random() - 0.5) * 0.5 * delta;
+      vel[i * 3 + 2] += (Math.random() - 0.5) * 0.5 * delta;
+      if (pos[i * 3 + 1] > maxH) {
+        _initSmokeParticle(pos, vel, i, o.x, o.y, o.z, vp.scale);
+      }
+    }
+  }
+  vp.points.geometry.attributes.position.needsUpdate = true;
 }
 
 function placeSceneryProp(renderer, theme, palette, x, y, z, rng) {
@@ -1686,7 +2086,7 @@ function placeSceneryProp(renderer, theme, palette, x, y, z, rng) {
     }
   } else if (theme.includes('volcan') || theme.includes('lava')) {
     const r = rng();
-    if (r < 0.35) {
+    if (r < 0.4) {
       // Rock cluster with small debris
       const rock = renderer.createToonMesh(_rockGeo, 0x443322, { outlineWidth: 0.02 });
       rock.position.set(x, y + 0.5 * scale, z);
@@ -1700,25 +2100,19 @@ function placeSceneryProp(renderer, theme, palette, x, y, z, rng) {
         sm.rotation.set(rng(), rng(), rng());
         renderer.scene.add(sm);
       }
-    } else if (r < 0.6) {
-      // Lava pillar
-      const pillar = renderer.createToonMesh(_pillarGeo, palette.lava || 0xff3300, { outlineWidth: 0.03 });
-      pillar.position.set(x, y + 3 * scale, z);
-      pillar.scale.set(scale * 0.5, scale * 0.8, scale * 0.5);
-      renderer.scene.add(pillar);
-    } else if (r < 0.8) {
+    } else if (r < 0.7) {
+      // Obsidian spike
+      const spike = renderer.createToonMesh(_crystalGeo, 0x111111, { outlineWidth: 0.03 });
+      spike.position.set(x, y + 2 * scale, z);
+      spike.scale.set(scale * 0.4, scale * 2, scale * 0.4);
+      renderer.scene.add(spike);
+    } else {
       // Volcanic arch
       const arch = renderer.createToonMesh(_archGeo, 0x553322, { outlineWidth: 0.03 });
       arch.position.set(x, y, z);
       arch.rotation.y = rotY;
       arch.scale.setScalar(scale);
       renderer.scene.add(arch);
-    } else {
-      // Obsidian spike
-      const spike = renderer.createToonMesh(_crystalGeo, 0x111111, { outlineWidth: 0.03 });
-      spike.position.set(x, y + 2 * scale, z);
-      spike.scale.set(scale * 0.4, scale * 2, scale * 0.4);
-      renderer.scene.add(spike);
     }
   } else if (theme.includes('ocean') || theme.includes('reef') || theme.includes('water')) {
     const r = rng();
@@ -1817,7 +2211,7 @@ function placeSceneryProp(renderer, theme, palette, x, y, z, rng) {
 
 // --- Continuous track mesh builder ---
 
-function buildContinuousTrackMesh(waypoints, trackWidth, material) {
+function buildContinuousTrackMesh(waypoints, trackWidth, material, circuit) {
   const n = waypoints.length;
   const halfW = trackWidth * 0.5;
   const CORNER_SUBDIVS = 6; // subdivisions per corner for smooth curves
@@ -1856,10 +2250,11 @@ function buildContinuousTrackMesh(waypoints, trackWidth, material) {
   // Cross-section: multiple points across the width for smooth shading
   const CROSS_DIVS = 4; // divisions across width
 
-  function addCrossSection(px, py, pz, perpX, perpZ, v) {
+  function addCrossSection(px, py, pz, perpX, perpZ, v, localWidth) {
+    const w = localWidth != null ? localWidth : trackWidth;
     for (let c = 0; c <= CROSS_DIVS; c++) {
       const t = c / CROSS_DIVS; // 0 = left, 1 = right
-      const offset = (t - 0.5) * trackWidth;
+      const offset = (t - 0.5) * w;
       positions.push(
         px + perpX * offset,
         py + 0.02,
@@ -1886,7 +2281,8 @@ function buildContinuousTrackMesh(waypoints, trackWidth, material) {
   // Start with first waypoint
   addCrossSection(
     waypoints[0].x, waypoints[0].y, waypoints[0].z,
-    perps[0].x, perps[0].z, 0
+    perps[0].x, perps[0].z, 0,
+    circuit ? getTrackWidthAtSegment(circuit, 0, 0) : trackWidth
   );
   let vertCount = CROSS_DIVS + 1;
 
@@ -1910,9 +2306,10 @@ function buildContinuousTrackMesh(waypoints, trackWidth, material) {
       const lerpZ = pi.z + (pn.z - pi.z) * t;
       const ll = Math.sqrt(lerpX * lerpX + lerpZ * lerpZ) || 1;
 
-      vAlong += segLen / straightDivs / trackWidth; // UV scale relative to width
+      const localW = circuit ? getTrackWidthAtSegment(circuit, i, t) : trackWidth;
+      vAlong += segLen / straightDivs / localW; // UV scale relative to width
 
-      addCrossSection(px, py, pz, lerpX / ll, lerpZ / ll, vAlong);
+      addCrossSection(px, py, pz, lerpX / ll, lerpZ / ll, vAlong, localW);
       addStripIndices(vertCount);
       vertCount += CROSS_DIVS + 1;
     }

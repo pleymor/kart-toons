@@ -3,6 +3,7 @@ uniform int biome; // 0=grass, 1=lava, 2=water, 3=neon, 4=stone
 
 varying vec3 vWorldPosition;
 varying vec2 vUv;
+varying float vFogDepth;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -61,5 +62,7 @@ void main() {
 
   worldPos.y += h;
   vWorldPosition = worldPos.xyz;
-  gl_Position = projectionMatrix * viewMatrix * worldPos;
+  vec4 mvPos = viewMatrix * worldPos;
+  vFogDepth = -mvPos.z;
+  gl_Position = projectionMatrix * mvPos;
 }

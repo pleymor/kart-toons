@@ -3,9 +3,13 @@ uniform vec3 baseColor;
 uniform vec3 accentColor;
 uniform float time;
 uniform int biome; // 0=grass, 1=lava, 2=water, 3=neon, 4=stone, 5=sand
+uniform vec3 fogColor;
+uniform float fogNear;
+uniform float fogFar;
 
 varying vec3 vWorldPosition;
 varying vec2 vUv;
+varying float vFogDepth;
 
 // --- Noise functions ---
 
@@ -118,9 +122,7 @@ void main() {
   else if (biome == 4) col = stoneBiome(wp);
   else col = grassBiome(wp);
 
-  // Distance fade to darker
-  float dist = length(vWorldPosition.xz) * 0.002;
-  col *= 1.0 - clamp(dist, 0.0, 0.5);
-
+  float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+  col = mix(col, fogColor, fogFactor);
   gl_FragColor = vec4(col, 1.0);
 }

@@ -23,6 +23,13 @@ function generateWaypoints() {
     y += Math.sin(t * 6) * 2;
     points.push(new THREE.Vector3(x, Math.max(0, y), z));
   }
+
+  // Add small bumps — road imperfections / speed bumps
+  points[8].y += 0.3;
+  points[25].y += 0.6;
+  points[45].y += 0.5;
+  points[62].y += 0.4;
+
   return points;
 }
 
@@ -43,8 +50,18 @@ function generateStartGrid() {
 
 function generateCrateSpawns() {
   const spawns = [];
-  for (let i = 4; i < waypoints.length; i += 4) {
-    spawns.push(waypoints[i].clone().add(new THREE.Vector3(0, 1.2, 0)));
+  let side = 1;
+  for (let i = 6; i < waypoints.length; i += 7) {
+    const wp = waypoints[i];
+    const next = waypoints[(i + 1) % waypoints.length];
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    const perpX = -dz / len;
+    const perpZ = dx / len;
+    const offset = side * (2 + Math.random());
+    side *= -1;
+    spawns.push(new THREE.Vector3(wp.x + perpX * offset, wp.y + 1.2, wp.z + perpZ * offset));
   }
   return spawns;
 }
@@ -61,7 +78,18 @@ export const NeonCity = {
   itemCrateSpawns: generateCrateSpawns(),
   turretCrateSpawns: [],
   legendaryCrateSpawn: waypoints[35].clone().add(new THREE.Vector3(0, 1.5, 0)),
-  trackWidth: 14,
+  trackWidth: 19,
+  trackWidths: (() => {
+    const w = new Array(70).fill(19);
+    // Wider sections (open plazas, highway)
+    for (let i = 0; i <= 7; i++) w[i] = 19 * 1.35;
+    for (let i = 28; i <= 36; i++) w[i] = 19 * 1.4;
+    for (let i = 55; i <= 60; i++) w[i] = 19 * 1.3;
+    // Narrower sections (sewer tunnels, alleys)
+    for (let i = 12; i <= 18; i++) w[i] = 19 * 0.7;
+    for (let i = 42; i <= 48; i++) w[i] = 19 * 0.75;
+    return w;
+  })(),
   shortcuts: [
     {
       id: 'metro-fan',

@@ -158,6 +158,8 @@ export function open() {
     });
   });
 
+  _bindKeybindListeners(el);
+
   el.querySelector('#restart-btn').addEventListener('click', () => {
     close();
     import('../main.js').then(m => m.setScene('character-select', { mode: 'solo' }));
@@ -278,6 +280,54 @@ export function bindSettingsEvents(container) {
       updateSetting(toggle.dataset.key, isOn);
     });
   });
+
+  _bindKeybindListeners(container);
+}
+
+let _activeRebind = null;
+
+function _bindKeybindListeners(container) {
+  container.querySelectorAll('.keybind-row').forEach(row => {
+    row.addEventListener('click', () => {
+      if (_activeRebind) return;
+      const playerIdx = parseInt(row.dataset.player);
+      const action = row.dataset.action;
+      const valueEl = row.querySelector('.keybind-value');
+      const origText = valueEl.textContent;
+
+      valueEl.textContent = '...';
+      valueEl.style.color = '#ffcc00';
+      valueEl.style.borderColor = '#ffcc00';
+      _activeRebind = { playerIdx, action, valueEl, origText };
+
+      const onKey = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        cleanup();
+        if (e.code === 'Escape') {
+          // Cancel
+          valueEl.textContent = origText;
+          valueEl.style.color = '#ff8844';
+          valueEl.style.borderColor = '#444';
+          return;
+        }
+        const im = getInputManager();
+        if (im) {
+          im.setBinding(playerIdx, action, [e.code]);
+          valueEl.textContent = keyCodeLabel(e.code);
+        }
+        valueEl.style.color = '#ff8844';
+        valueEl.style.borderColor = '#444';
+      };
+
+      function cleanup() {
+        _activeRebind = null;
+        window.removeEventListener('keydown', onKey, true);
+      }
+
+      window.addEventListener('keydown', onKey, true);
+    });
+  });
 }
 
 function slider(label, key, value, min = 0, max = 1, step = 0.01) {
@@ -305,12 +355,55 @@ function toggle(label, key, value) {
   </div>`;
 }
 
+const ACTION_LABELS = {
+  accelerate: 'Accelerate',
+  brake: 'Brake',
+  left: 'Steer Left',
+  right: 'Steer Right',
+  drift: 'Drift',
+  useItem: 'Use Item',
+  lookBehind: 'Look Behind',
+  horn: 'Horn'
+};
+
+function keyCodeLabel(code) {
+  return code
+    .replace('Key', '')
+    .replace('Arrow', '')
+    .replace('Numpad', 'Num ')
+    .replace('NumpadDecimal', 'Num .')
+    .replace('NumpadAdd', 'Num +');
+}
+
+function buildKeybindRows(playerIndex) {
+  const im = getInputManager();
+  const bindings = im?.getBindings(playerIndex);
+  if (!bindings) return '';
+  return Object.entries(ACTION_LABELS).map(([action, label]) => {
+    const keys = bindings[action] || [];
+    const keysStr = keys.map(keyCodeLabel).join(' / ') || '-';
+    return `<div class="setting-row keybind-row" data-player="${playerIndex}" data-action="${action}" style="cursor:pointer;">
+      <span class="setting-label">${label}</span>
+      <span class="keybind-value" style="color:#ff8844;font-family:'Press Start 2P',monospace;font-size:clamp(10px,2vw,12px);
+        padding:4px 8px;background:rgba(255,68,0,0.1);border:1px solid #444;border-radius:3px;min-width:60px;text-align:center;">
+        ${keysStr}
+      </span>
+    </div>`;
+  }).join('');
+}
+
 function buildControlsSection(s) {
   return `
-    <p class="ui-text--xs" style="margin:0 0 8px;">Key remapping: click action in-game settings</p>
+    <p class="ui-text--xs" style="margin:0 0 8px;color:#888;">Click a binding to remap it. Press Escape to cancel.</p>
+    <p class="ui-text--xs" style="margin:0 0 4px;color:#ff6633;">PLAYER 1</p>
+    ${buildKeybindRows(0)}
+    <p class="ui-text--xs" style="margin:8px 0 4px;color:#ff6633;">PLAYER 2</p>
+    ${buildKeybindRows(1)}
+    <div style="margin-top:8px;">
     ${select('Steering Assist', 'steeringAssist', s.steeringAssist || 'off', [
       { value: 'off', label: 'Off' }, { value: 'light', label: 'Light' }, { value: 'strong', label: 'Strong' }
     ])}
+    </div>
   `;
 }
 

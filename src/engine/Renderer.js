@@ -32,10 +32,10 @@ export class Renderer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
     this.renderer.setClearColor(0x1a1a2e);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.autoClear = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.4;
 
     this.scene = new THREE.Scene();
 
@@ -45,7 +45,7 @@ export class Renderer {
     this.camera.lookAt(0, 0, 0);
 
     // Directional light (sun) with shadow map — follows the player
-    this.light = new THREE.DirectionalLight(0xffeedd, 1.8);
+    this.light = new THREE.DirectionalLight(0xffeedd, 2.2);
     this.light.position.set(40, 60, 20);
     this.light.castShadow = true;
     this.light.shadow.mapSize.set(2048, 2048);
@@ -64,11 +64,11 @@ export class Renderer {
     this._lightOffset = new THREE.Vector3(40, 60, 20);
 
     // Hemisphere light for natural sky/ground ambient
-    this.hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 0.6);
+    this.hemiLight = new THREE.HemisphereLight(0x99bbdd, 0x886644, 1.2);
     this.scene.add(this.hemiLight);
 
     // Low ambient fill
-    this.ambient = new THREE.AmbientLight(0x303040, 0.3);
+    this.ambient = new THREE.AmbientLight(0x606070, 0.8);
     this.scene.add(this.ambient);
 
     // Split-screen viewports
@@ -142,47 +142,54 @@ export class Renderer {
   // Set lighting theme based on circuit
   setLightingTheme(theme) {
     const t = (theme || '').toLowerCase();
+    let fogColor, fogNear, fogFar;
     if (t.includes('volcan') || t.includes('lava')) {
       this.light.color.setHex(0xffaa66);
-      this.light.intensity = 1.4;
-      this.hemiLight.color.setHex(0x664422);
-      this.hemiLight.groundColor.setHex(0x331100);
-      this.hemiLight.intensity = 0.5;
-      this.ambient.color.setHex(0x442211);
-      this.ambient.intensity = 0.4;
+      this.light.intensity = 2.0;
+      this.hemiLight.color.setHex(0x996644);
+      this.hemiLight.groundColor.setHex(0x663311);
+      this.hemiLight.intensity = 1.0;
+      this.ambient.color.setHex(0x664433);
+      this.ambient.intensity = 0.7;
+      fogColor = 0x332211; fogNear = 120; fogFar = 350;
     } else if (t.includes('ocean') || t.includes('reef')) {
       this.light.color.setHex(0xaaccff);
-      this.light.intensity = 1.2;
-      this.hemiLight.color.setHex(0x6688bb);
-      this.hemiLight.groundColor.setHex(0x223344);
-      this.hemiLight.intensity = 0.7;
-      this.ambient.color.setHex(0x223344);
-      this.ambient.intensity = 0.4;
-    } else if (t.includes('neon') || t.includes('cyber')) {
-      this.light.color.setHex(0x8888cc);
-      this.light.intensity = 1.0;
-      this.hemiLight.color.setHex(0x222244);
-      this.hemiLight.groundColor.setHex(0x111122);
-      this.hemiLight.intensity = 0.4;
-      this.ambient.color.setHex(0x222233);
-      this.ambient.intensity = 0.5;
-    } else if (t.includes('forest') || t.includes('crystal')) {
-      this.light.color.setHex(0xffeebb);
-      this.light.intensity = 1.6;
-      this.hemiLight.color.setHex(0x88aa66);
-      this.hemiLight.groundColor.setHex(0x334422);
-      this.hemiLight.intensity = 0.7;
-      this.ambient.color.setHex(0x334433);
-      this.ambient.intensity = 0.3;
-    } else {
-      this.light.color.setHex(0xffeedd);
       this.light.intensity = 1.8;
       this.hemiLight.color.setHex(0x88aacc);
-      this.hemiLight.groundColor.setHex(0x444422);
-      this.hemiLight.intensity = 0.6;
-      this.ambient.color.setHex(0x303040);
-      this.ambient.intensity = 0.3;
+      this.hemiLight.groundColor.setHex(0x445566);
+      this.hemiLight.intensity = 1.1;
+      this.ambient.color.setHex(0x445566);
+      this.ambient.intensity = 0.7;
+      fogColor = 0x0a2244; fogNear = 100; fogFar = 300;
+    } else if (t.includes('neon') || t.includes('cyber')) {
+      this.light.color.setHex(0x8888cc);
+      this.light.intensity = 1.6;
+      this.hemiLight.color.setHex(0x444466);
+      this.hemiLight.groundColor.setHex(0x332244);
+      this.hemiLight.intensity = 0.8;
+      this.ambient.color.setHex(0x444455);
+      this.ambient.intensity = 0.8;
+      fogColor = 0x110022; fogNear = 100; fogFar = 320;
+    } else if (t.includes('forest') || t.includes('crystal')) {
+      this.light.color.setHex(0xffeebb);
+      this.light.intensity = 2.0;
+      this.hemiLight.color.setHex(0x99bb77);
+      this.hemiLight.groundColor.setHex(0x556633);
+      this.hemiLight.intensity = 1.1;
+      this.ambient.color.setHex(0x556655);
+      this.ambient.intensity = 0.7;
+      fogColor = 0x88aacc; fogNear = 150; fogFar = 400;
+    } else {
+      this.light.color.setHex(0xffeedd);
+      this.light.intensity = 2.2;
+      this.hemiLight.color.setHex(0x99bbdd);
+      this.hemiLight.groundColor.setHex(0x886644);
+      this.hemiLight.intensity = 1.2;
+      this.ambient.color.setHex(0x606070);
+      this.ambient.intensity = 0.8;
+      fogColor = 0x667788; fogNear = 150; fogFar = 400;
     }
+    this.scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
   }
 
   // Make the shadow-casting light follow a world position (player kart)
@@ -260,10 +267,7 @@ export class Renderer {
       vp.camera.aspect = vpW / vpH;
       vp.camera.updateProjectionMatrix();
 
-      // Hide kart mesh for this viewport's player (cockpit cam)
-      if (vp.hideMesh) vp.hideMesh.visible = false;
       this.renderer.render(this.scene, vp.camera);
-      if (vp.hideMesh) vp.hideMesh.visible = true;
     }
 
     // FPS tracking

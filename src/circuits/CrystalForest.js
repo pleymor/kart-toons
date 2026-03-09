@@ -9,9 +9,15 @@ function generateWaypoints() {
     const r = 90 + Math.sin(t * 3) * 25 + Math.cos(t * 5) * 15;
     const x = Math.cos(t) * r;
     const z = Math.sin(t) * r;
-    const y = Math.sin(t * 4) * 2 + Math.max(0, Math.sin(t * 2) * 4);
+    let y = Math.sin(t * 4) * 2 + Math.max(0, Math.sin(t * 2) * 4);
     points.push(new THREE.Vector3(x, y, z));
   }
+
+  // Add small bumps at specific waypoints
+  points[12].y += 0.5;
+  points[30].y += 0.7;
+  points[55].y += 0.4;
+
   return points;
 }
 
@@ -32,8 +38,20 @@ function generateStartGrid() {
 
 function generateCrateSpawns() {
   const spawns = [];
-  for (let i = 4; i < waypoints.length; i += 4) {
-    spawns.push(waypoints[i].clone().add(new THREE.Vector3(0, 1.2, 0)));
+  let side = 1; // alternate left/right
+  for (let i = 7; i < waypoints.length; i += 7) {
+    const wp = waypoints[i];
+    const next = waypoints[(i + 1) % waypoints.length];
+    // Track direction and perpendicular offset
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    // Perpendicular: rotate direction 90 degrees
+    const perpX = -dz / len;
+    const perpZ = dx / len;
+    const offset = side * (2 + Math.random()); // 2-3 units left or right
+    side *= -1;
+    spawns.push(new THREE.Vector3(wp.x + perpX * offset, wp.y + 1.2, wp.z + perpZ * offset));
   }
   return spawns;
 }
@@ -50,7 +68,18 @@ export const CrystalForest = {
   itemCrateSpawns: generateCrateSpawns(),
   turretCrateSpawns: [],
   legendaryCrateSpawn: waypoints[40].clone().add(new THREE.Vector3(0, 1.5, 0)),
-  trackWidth: 11,
+  trackWidth: 16,
+  trackWidths: (() => {
+    const w = new Array(75).fill(16);
+    // Wider sections
+    for (let i = 5; i <= 12; i++) w[i] = 16 * 1.3;   // wide opening
+    for (let i = 35; i <= 42; i++) w[i] = 16 * 1.4;   // broadest stretch
+    for (let i = 58; i <= 63; i++) w[i] = 16 * 1.25;  // wide before finish
+    // Narrower sections
+    for (let i = 20; i <= 25; i++) w[i] = 16 * 0.75;  // tight forest passage
+    for (let i = 48; i <= 53; i++) w[i] = 16 * 0.7;   // crystal corridor
+    return w;
+  })(),
   shortcuts: [
     {
       id: 'frozen-river',

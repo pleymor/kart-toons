@@ -47,7 +47,8 @@ export function show(container) {
         width:clamp(52px,12vw,64px);height:clamp(52px,12vw,64px);
         border:2px solid #555;background:rgba(0,0,0,0.5);border-radius:8px;
         display:flex;align-items:center;justify-content:center;
-        font-size:clamp(10px,2.2vw,12px);text-align:center;color:#888;
+        font-size:clamp(28px,7vw,40px);text-align:center;color:#888;
+        line-height:1;
       ">-</div>
 
       <!-- Rearview mirror (visual frame only, actual render is on the canvas below) -->
@@ -104,11 +105,14 @@ export function updateHUD(data) {
   const speedEl = hudElement.querySelector('#hud-speed');
   if (speedEl) speedEl.innerHTML = `${Math.round(speed * 3.6)} <span style="font-size:clamp(12px,2.5vw,14px);color:#888;">km/h</span>`;
 
-  // Item
+  // Item (emoji icon)
   const itemEl = hudElement.querySelector('#hud-item');
   if (itemEl) {
-    itemEl.textContent = itemName || '-';
-    itemEl.style.borderColor = itemName ? '#ff4400' : '#555';
+    const hasItem = itemName && itemName !== '-';
+    itemEl.textContent = hasItem ? itemName : '-';
+    itemEl.style.borderColor = hasItem ? '#ff4400' : '#555';
+    itemEl.style.fontSize = hasItem ? 'clamp(28px,7vw,40px)' : 'clamp(10px,2.2vw,12px)';
+    itemEl.style.background = hasItem ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
   }
 
   // Minimap

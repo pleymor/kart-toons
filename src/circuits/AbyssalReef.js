@@ -12,6 +12,12 @@ function generateWaypoints() {
     const y = Math.sin(t * 3) * 5 + Math.cos(t * 7) * 2;
     points.push(new THREE.Vector3(x, y, z));
   }
+
+  // Add small bumps — coral ridges
+  points[10].y += 0.4;
+  points[28].y += 0.6;
+  points[50].y += 0.5;
+
   return points;
 }
 
@@ -32,8 +38,18 @@ function generateStartGrid() {
 
 function generateCrateSpawns() {
   const spawns = [];
-  for (let i = 4; i < waypoints.length; i += 4) {
-    spawns.push(waypoints[i].clone().add(new THREE.Vector3(0, 1.2, 0)));
+  let side = 1;
+  for (let i = 6; i < waypoints.length; i += 7) {
+    const wp = waypoints[i];
+    const next = waypoints[(i + 1) % waypoints.length];
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    const perpX = -dz / len;
+    const perpZ = dx / len;
+    const offset = side * (2 + Math.random());
+    side *= -1;
+    spawns.push(new THREE.Vector3(wp.x + perpX * offset, wp.y + 1.2, wp.z + perpZ * offset));
   }
   return spawns;
 }
@@ -50,7 +66,18 @@ export const AbyssalReef = {
   itemCrateSpawns: generateCrateSpawns(),
   turretCrateSpawns: [],
   legendaryCrateSpawn: waypoints[36].clone().add(new THREE.Vector3(0, 1.5, 0)),
-  trackWidth: 12,
+  trackWidth: 17,
+  trackWidths: (() => {
+    const w = new Array(72).fill(17);
+    // Wider sections (open reef basins)
+    for (let i = 8; i <= 15; i++) w[i] = 17 * 1.3;
+    for (let i = 40; i <= 48; i++) w[i] = 17 * 1.4;
+    for (let i = 60; i <= 65; i++) w[i] = 17 * 1.25;
+    // Narrower sections (coral canyons)
+    for (let i = 22; i <= 28; i++) w[i] = 17 * 0.75;
+    for (let i = 52; i <= 57; i++) w[i] = 17 * 0.7;
+    return w;
+  })(),
   shortcuts: [
     {
       id: 'fast-current',

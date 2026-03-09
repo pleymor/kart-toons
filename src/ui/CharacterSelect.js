@@ -50,6 +50,7 @@ export function show(container, data = {}) {
   let previewCleanups = [];
 
   let _inputCleanups = [];
+  let _done = false; // prevent actions after scene transition
 
   function stopPreviews() {
     for (const fn of previewCleanups) fn();
@@ -75,17 +76,20 @@ export function show(container, data = {}) {
   }
 
   function goBack() {
+    if (_done) return;
     if (currentPlayer > 0) {
       selectedIds.pop();
       currentPlayer--;
       render();
     } else {
+      _done = true;
       stopPreviews();
       setScene('menu');
     }
   }
 
   function selectCurrent() {
+    if (_done) return;
     const c = characters[charIndex];
     if (selectedIds.includes(c.id)) return;
 
@@ -96,6 +100,7 @@ export function show(container, data = {}) {
     currentPlayer++;
 
     if (currentPlayer >= playerCount) {
+      _done = true;
       stopPreviews();
       if (playerCount === 1) {
         setScene('circuit-select', { ...data, characterId: selectedIds[0] });

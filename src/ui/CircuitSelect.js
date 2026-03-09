@@ -2,6 +2,7 @@ import { getAllCircuits } from '../circuits/index.js';
 import { setScene } from '../main.js';
 import { startRace } from '../game/RaceSetup.js';
 import { startGamepadNav } from './GamepadNav.js';
+import { Storage } from '../utils/Storage.js';
 
 function highlightCard(cards, index) {
   cards.forEach((c, i) => {
@@ -44,7 +45,8 @@ export function show(container, data = {}) {
   function selectCircuit(index) {
     cleanup();
     const circuitId = cards[index].dataset.id;
-    startRace({ ...data, circuitId });
+    const settings = Storage.getSettings();
+    startRace({ ...data, circuitId, splitOrientation: settings.splitScreenOrientation || 'horizontal' });
   }
 
   function goBack() {

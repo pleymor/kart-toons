@@ -63,7 +63,9 @@ export class InputManager {
         drift: false,
         useItem: false,
         lookBehind: false,
-        horn: false
+        horn: false,
+        lookX: 0,
+        lookY: 0
       },
       gamepadIndex: -1
     };
@@ -164,6 +166,12 @@ export class InputManager {
     const lt = buttons[GAMEPAD_MAPPING.brake.index]?.value || 0;
     if (rt > 0.1) s.throttle = rt;
     if (lt > 0.3) s.brake = true;
+
+    // Right stick for camera look
+    const lookX = axes[2] || 0;
+    const lookY = axes[3] || 0;
+    s.lookX = Math.abs(lookX) > 0.15 ? lookX : 0;
+    s.lookY = Math.abs(lookY) > 0.15 ? lookY : 0;
 
     // Buttons
     if (buttons[GAMEPAD_MAPPING.drift.index]?.pressed) s.drift = true;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getTrackWidthAtSegment } from '../utils/TrackWidth.js';
 
 const DRIFT_STATE = { NONE: 0, CHARGING: 1 };
 const BOOST_TIERS = [
@@ -201,7 +202,6 @@ export class KartController {
     // Use circuit waypoints for ground height, interpolated for smooth slopes
     if (this._circuit) {
       const wps = this._circuit.waypoints;
-      const trackHalf = (this._circuit.trackWidth || 12) * 0.5;
       // Find the closest segment (pair of consecutive waypoints)
       let bestDist = Infinity;
       let bestY = 0;
@@ -230,6 +230,7 @@ export class KartController {
       }
 
       const lateralDist = Math.sqrt(bestDist);
+      const trackHalf = getTrackWidthAtSegment(this._circuit, bestSegIdx, bestT) * 0.5;
 
       // Save last valid on-road position for respawn
       if (lateralDist <= trackHalf) {

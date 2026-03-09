@@ -40,24 +40,43 @@ const ITEM_WEIGHTS = {
   'pluie-asteroides':  { 1: 0, 2: 0, 3: 0, 4: 0, 5: 1, 6: 2, 7: 3, 8: 5 }
 };
 
-const ITEM_NAMES = {
-  'boost-nitro': 'Boost Nitro',
-  'orbe-de-choc': 'Orbe de Choc',
-  'mine-magnetique': 'Mine Magnetique',
-  'bouclier-orbital': 'Bouclier Orbital',
-  'nappe-de-gel': 'Nappe de Gel',
-  'salve-de-debris': 'Salve de Debris',
-  'onde-emp': 'Onde EMP',
-  'traqueur-de-rang': 'Traqueur de Rang',
-  'cloak': 'Cloak',
-  'leurre': 'Leurre Holographique',
-  'levitateur': 'Levitateur',
-  'teleporteur': 'Teleporteur',
-  'phase-ghost': 'Phase Ghost',
-  'mur-temporaire': 'Mur Temporaire',
-  'faux-bonus': 'Faux Bonus',
-  'pluie-asteroides': "Pluie d'Asteroides",
-  'oeil-de-khaos': "L'Oeil de KHAOS"
+const ITEM_ICONS = {
+  'boost-nitro': '\u{1F525}',        // 🔥
+  'orbe-de-choc': '\u{26A1}',        // ⚡
+  'mine-magnetique': '\u{1F4A3}',    // 💣
+  'bouclier-orbital': '\u{1F6E1}',   // 🛡
+  'nappe-de-gel': '\u{2744}',        // ❄
+  'salve-de-debris': '\u{1F4A5}',    // 💥
+  'onde-emp': '\u{1F300}',           // 🌀
+  'traqueur-de-rang': '\u{1F3AF}',  // 🎯
+  'cloak': '\u{1F47B}',              // 👻
+  'leurre': '\u{1F916}',             // 🤖
+  'levitateur': '\u{1F680}',         // 🚀
+  'teleporteur': '\u{2728}',         // ✨
+  'phase-ghost': '\u{1F30A}',        // 🌊
+  'mur-temporaire': '\u{1F9F1}',     // 🧱
+  'faux-bonus': '\u{2753}',          // ❓
+  'pluie-asteroides': '\u{2604}',    // ☄
+  'oeil-de-khaos': '\u{1F441}',       // 👁
+  // Signature weapons
+  'grapplin-boost': '\u{1FA9D}',     // 🪝
+  'mind-spike': '\u{1F9E0}',         // 🧠
+  'charge-cornue': '\u{1F98C}',      // 🦌
+  'overclock': '\u{26A1}',           // ⚡
+  'napalm-trail': '\u{1F525}',       // 🔥
+  'hex-clone': '\u{1F52E}',          // 🔮
+  'sonar-pulse': '\u{1F4E1}',        // 📡
+  'root-trap': '\u{1FAB4}',          // 🪴
+  'chaos-rift': '\u{1F30C}',         // 🌌
+  'system-crash': '\u{1F4BB}'        // 💻
+};
+
+// SFX played at trap position when triggered
+const TRAP_TRIGGER_SFX = {
+  'mine': 'explosion',
+  'gel': 'splash',
+  'fake-crate': 'explosion',
+  'wall': 'slam'
 };
 
 // Shared geometries for item meshes
@@ -70,6 +89,7 @@ export class ItemSystem {
     this.scene = scene;
     this.circuit = circuit;
     this.participants = participants; // [{ id, kartController }]
+    this.listenerPos = null; // set externally to player kart position for 3D audio
 
     // Item crates
     this.crates = [];
@@ -216,19 +236,15 @@ export class ItemSystem {
     const sfxMap = {
       'boost-nitro': 'boost',
       'orbe-de-choc': 'projectile',
-      'salve-debris': 'projectile',
-      'mine-magnetique': 'mine-beep',
+      'salve-de-debris': 'projectile',
       'onde-emp': 'emp',
-      'traqueur-rang': 'laser',
+      'traqueur-de-rang': 'laser',
       'bouclier-orbital': 'shield',
       'cloak': 'shield',
-      'leurre-holographique': 'teleport',
+      'leurre': 'teleport',
       'levitateur': 'boost',
       'teleporteur': 'teleport',
       'phase-ghost': 'teleport',
-      'nappe-gel': 'splash',
-      'mur-temporaire': 'slam',
-      'faux-bonus': 'mine-beep',
       'pluie-asteroides': 'explosion',
       'oeil-de-khaos': 'emp'
     };
@@ -278,15 +294,17 @@ export class ItemSystem {
         this.scene.add(mesh);
 
         let mineArmed = false;
-        const mineArmDelay = 1.5; // seconds before it can hit the owner
+        const mineArmDelay = 1.5;
         let mineArmTimer = 0;
-        this.activeItems.push({
+        let mineTriggered = false;
+        const mineItem = {
           type: 'mine',
           position: dropPos.clone(),
           mesh,
           timer: 30,
           ownerId: user.id,
           update: (dt) => {
+            if (mineTriggered) return;
             mineArmTimer += dt;
             if (!mineArmed && mineArmTimer >= mineArmDelay) mineArmed = true;
             for (const p of this.participants) {
@@ -298,12 +316,16 @@ export class ItemSystem {
                   onStart: (k) => { k.speed *= 0.1; k.velocity.multiplyScalar(0.1); },
                   onEnd: () => {}
                 });
-                mesh.visible = false;
+                this._playTrapTriggerSFX('mine', dropPos);
+                mineTriggered = true;
+                mineItem.timer = 0; // remove on next update cycle
+                this.scene.remove(mesh);
                 return;
               }
             }
           }
-        });
+        };
+        this.activeItems.push(mineItem);
         break;
       }
 
@@ -363,6 +385,7 @@ export class ItemSystem {
         let gelArmed = false;
         let gelArmTimer = 0;
         const gelArmDelay = 1.5;
+        const gelHitIds = new Set();
         this.activeItems.push({
           type: 'gel',
           position: gelPos,
@@ -375,7 +398,13 @@ export class ItemSystem {
               if (p.id === user.id && !gelArmed) continue;
               const d = p.kartController.position.distanceTo(gelPos);
               if (d < 6) {
+                if (!gelHitIds.has(p.id)) {
+                  gelHitIds.add(p.id);
+                  this._playTrapTriggerSFX('gel', gelPos);
+                }
                 p.kartController.surfaceFriction = 0.2;
+              } else {
+                gelHitIds.delete(p.id);
               }
             }
           },
@@ -489,12 +518,17 @@ export class ItemSystem {
         wMesh.position.y += 1.5;
         wMesh.rotation.y = kart.yaw;
         this.scene.add(wMesh);
+        const wallHitIds = new Set();
         this.activeItems.push({
           type: 'wall', mesh: wMesh, timer: 5, position: wallPos,
           update: () => {
             for (const p of this.participants) {
               if (p.id === user.id) continue;
               if (p.kartController.position.distanceTo(wallPos) < 5) {
+                if (!wallHitIds.has(p.id)) {
+                  wallHitIds.add(p.id);
+                  this._playTrapTriggerSFX('wall', wallPos);
+                }
                 p.kartController.speed *= 0.2;
                 p.kartController.velocity.multiplyScalar(0.2);
               }
@@ -514,9 +548,11 @@ export class ItemSystem {
         const fMesh = new THREE.Mesh(_crateGeo, fMat);
         fMesh.position.copy(fakePos);
         this.scene.add(fMesh);
-        this.activeItems.push({
+        let fakeTriggered = false;
+        const fakeItem = {
           type: 'fake-crate', mesh: fMesh, timer: 30, position: fakePos,
           update: (delta) => {
+            if (fakeTriggered) return;
             fMesh.rotation.y += delta * 2;
             for (const p of this.participants) {
               if (p.id === user.id) continue;
@@ -526,11 +562,16 @@ export class ItemSystem {
                   onStart: (k) => { k.speed *= 0.1; k.velocity.multiplyScalar(0.1); },
                   onEnd: () => {}
                 });
-                fMesh.visible = false;
+                this._playTrapTriggerSFX('fake-crate', fakePos);
+                fakeTriggered = true;
+                fakeItem.timer = 0;
+                this.scene.remove(fMesh);
+                return;
               }
             }
           }
-        });
+        };
+        this.activeItems.push(fakeItem);
         break;
       }
 
@@ -642,8 +683,21 @@ export class ItemSystem {
     return this.heldItems.get(participantId);
   }
 
+  getItemIcon(itemId) {
+    return ITEM_ICONS[itemId] || '';
+  }
+
+  // Keep for backward compat
   getItemName(itemId) {
-    return ITEM_NAMES[itemId] || itemId;
+    return ITEM_ICONS[itemId] || itemId;
+  }
+
+  _playTrapTriggerSFX(trapType, position) {
+    const sfxName = TRAP_TRIGGER_SFX[trapType];
+    if (!sfxName) return;
+    const audio = getAudioEngine();
+    if (!audio) return;
+    audio.playSFX3D(sfxName, position, this.listenerPos);
   }
 
   dispose() {

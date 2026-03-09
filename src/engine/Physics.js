@@ -9,10 +9,17 @@ export class Physics {
   }
 
   async init() {
+    // Suppress rapier 0.19 wasm-bindgen deprecation warning (internal to library)
+    const _warn = console.warn;
+    console.warn = (...args) => {
+      if (typeof args[0] === 'string' && args[0].includes('deprecated parameters')) return;
+      _warn.apply(console, args);
+    };
     await RAPIER.init();
+    console.warn = _warn;
     this.RAPIER = RAPIER;
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
-    this.eventQueue = new RAPIER.EventQueue(true);
+    this.eventQueue = new RAPIER.EventQueue({ drainContactForceEvents: true });
   }
 
   step(delta) {

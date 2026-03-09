@@ -26,6 +26,13 @@ function generateWaypoints() {
 
     points.push(new THREE.Vector3(x, y, z));
   }
+
+  // Add small bumps — rocky volcanic terrain
+  points[15].y += 0.6;
+  points[38].y += 0.8;
+  points[60].y += 0.5;
+  points[72].y += 0.3;
+
   return points;
 }
 
@@ -53,10 +60,18 @@ function generateStartGrid() {
 // Item crate positions along the track
 function generateCrateSpawns() {
   const spawns = [];
-  for (let i = 5; i < waypoints.length; i += 4) {
-    const p = waypoints[i].clone();
-    p.y += 1.2;
-    spawns.push(p);
+  let side = 1;
+  for (let i = 6; i < waypoints.length; i += 7) {
+    const wp = waypoints[i];
+    const next = waypoints[(i + 1) % waypoints.length];
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    const perpX = -dz / len;
+    const perpZ = dx / len;
+    const offset = side * (2 + Math.random());
+    side *= -1;
+    spawns.push(new THREE.Vector3(wp.x + perpX * offset, wp.y + 1.2, wp.z + perpZ * offset));
   }
   return spawns;
 }
@@ -75,7 +90,18 @@ export const VolcanPeak = {
   turretCrateSpawns: [],
   legendaryCrateSpawn: waypoints[Math.floor(waypoints.length * 0.6)].clone().add(new THREE.Vector3(0, 1.5, 0)),
 
-  trackWidth: 12,
+  trackWidth: 17,
+  trackWidths: (() => {
+    const w = new Array(80).fill(17);
+    // Wider sections (open lava plains)
+    for (let i = 0; i <= 8; i++) w[i] = 17 * 1.35;
+    for (let i = 30; i <= 38; i++) w[i] = 17 * 1.4;
+    for (let i = 62; i <= 68; i++) w[i] = 17 * 1.25;
+    // Narrower sections (lava bridges, tunnels)
+    for (let i = 15; i <= 22; i++) w[i] = 17 * 0.7;
+    for (let i = 48; i <= 55; i++) w[i] = 17 * 0.75;
+    return w;
+  })(),
 
   shortcuts: [
     {

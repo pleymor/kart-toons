@@ -117,6 +117,29 @@ export class AudioEngine {
     return sound.play();
   }
 
+  /**
+   * Play a positional SFX at a world position relative to a listener.
+   * Volume attenuates with distance.
+   */
+  playSFX3D(name, sourcePos, listenerPos, maxDist = 60) {
+    if (!sourcePos || !listenerPos) return this.playSFX(name);
+    const dx = sourcePos.x - listenerPos.x;
+    const dy = (sourcePos.y || 0) - (listenerPos.y || 0);
+    const dz = sourcePos.z - listenerPos.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist > maxDist) return; // too far, don't play
+    const vol = Math.max(0.1, 1.0 - dist / maxDist);
+    const files = SFX_FILES[name];
+    if (!files) return;
+    if (!this.sfxPool.has(name)) {
+      this.sfxPool.set(name, new Howl({ src: files, volume: 1.0 }));
+    }
+    const sound = this.sfxPool.get(name);
+    const id = sound.play();
+    sound.volume(vol * this.sfxVolume * this.masterVolume, id);
+    return id;
+  }
+
   loadRaceMusic(trackIndex = 0) {
     if (this.musicMode === 'off') return;
 

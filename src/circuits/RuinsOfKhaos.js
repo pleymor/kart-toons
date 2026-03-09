@@ -17,6 +17,12 @@ function generateWaypoints() {
     }
     points.push(new THREE.Vector3(x, Math.max(0, y), z));
   }
+
+  // Add small bumps — crumbling ruins
+  points[10].y += 0.7;
+  points[35].y += 0.5;
+  points[58].y += 0.8;
+
   return points;
 }
 
@@ -37,8 +43,18 @@ function generateStartGrid() {
 
 function generateCrateSpawns() {
   const spawns = [];
-  for (let i = 4; i < waypoints.length; i += 4) {
-    spawns.push(waypoints[i].clone().add(new THREE.Vector3(0, 1.2, 0)));
+  let side = 1;
+  for (let i = 7; i < waypoints.length; i += 8) {
+    const wp = waypoints[i];
+    const next = waypoints[(i + 1) % waypoints.length];
+    const dx = next.x - wp.x;
+    const dz = next.z - wp.z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    const perpX = -dz / len;
+    const perpZ = dx / len;
+    const offset = side * (2 + Math.random());
+    side *= -1;
+    spawns.push(new THREE.Vector3(wp.x + perpX * offset, wp.y + 1.2, wp.z + perpZ * offset));
   }
   return spawns;
 }
@@ -55,7 +71,18 @@ export const RuinsOfKhaos = {
   itemCrateSpawns: generateCrateSpawns(),
   turretCrateSpawns: [],
   legendaryCrateSpawn: waypoints[60].clone().add(new THREE.Vector3(0, 1.5, 0)),
-  trackWidth: 13,
+  trackWidth: 18,
+  trackWidths: (() => {
+    const w = new Array(80).fill(18);
+    // Wider sections (open ruins courtyards)
+    for (let i = 5; i <= 12; i++) w[i] = 18 * 1.35;
+    for (let i = 38; i <= 46; i++) w[i] = 18 * 1.4;
+    for (let i = 68; i <= 74; i++) w[i] = 18 * 1.25;
+    // Narrower sections (crumbling corridors)
+    for (let i = 20; i <= 26; i++) w[i] = 18 * 0.7;
+    for (let i = 52; i <= 58; i++) w[i] = 18 * 0.75;
+    return w;
+  })(),
   shortcuts: [
     {
       id: 'teleport-portal',

@@ -54,15 +54,15 @@ export class RaceManager {
     this.countdownTimer += delta;
     this.countdown = Math.max(0, 3 - Math.floor(this.countdownTimer));
 
-    // Play countdown SFX on transitions
+    // Play countdown SFX on transitions: 3 → 2 → 1 → GO
     const audio = getAudioEngine();
     if (audio && this.countdown !== prevCountdown) {
-      if (this.countdown === 2) audio.playSFX('countdown-3');
-      else if (this.countdown === 1) audio.playSFX('countdown-2');
-      else if (this.countdown === 0) audio.playSFX('countdown-go');
-    }
-    if (prevCountdown === 1 && this.countdown === 0) {
-      if (audio) audio.playSFX('countdown-1');
+      if (this.countdown === 2) audio.playSFX('countdown-3'); // just showed "3"
+      else if (this.countdown === 1) audio.playSFX('countdown-2'); // just showed "2"
+      else if (this.countdown === 0) {
+        audio.playSFX('countdown-1'); // just showed "1"
+        setTimeout(() => audio.playSFX('countdown-go'), 800); // then GO
+      }
     }
 
     if (this.countdownTimer >= 4) {
