@@ -1,5 +1,7 @@
 import { setScene } from '../main.js';
 import { startGamepadNav } from './GamepadNav.js';
+import { buildSettingsSectionsHTML, bindSettingsEvents, applySettings } from './PauseMenu.js';
+import { Storage } from '../utils/Storage.js';
 
 const MENU_HTML = `
 <div class="ui-screen" style="justify-content:center;">
@@ -15,6 +17,7 @@ const MENU_HTML = `
     <button class="ui-btn" data-action="crew">CREW MODE (2P)</button>
     <button class="ui-btn" data-action="online-create">ONLINE: CREATE ROOM</button>
     <button class="ui-btn" data-action="online-join">ONLINE: JOIN ROOM</button>
+    <button class="ui-btn ui-btn--secondary" data-action="settings">SETTINGS</button>
     <button class="ui-btn ui-btn--secondary" data-action="stats">STATS</button>
   </div>
 </div>
@@ -57,6 +60,26 @@ export function show(container) {
       case 'crew':
         setScene('character-select', { mode: 'crew', playerCount: 1 });
         break;
+      case 'settings': {
+        cleanup();
+        const settings = Storage.getSettings();
+        container.innerHTML = `
+          <div class="ui-screen" style="justify-content:center;">
+            <h2 class="ui-heading" style="margin-bottom:clamp(12px,3vw,24px);">SETTINGS</h2>
+            <div style="width:100%;max-width:420px;max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+              ${buildSettingsSectionsHTML(settings)}
+              <button class="ui-btn ui-btn--secondary" id="settings-back" style="margin-top:clamp(8px,2vw,12px);">BACK</button>
+            </div>
+          </div>
+        `;
+        bindSettingsEvents(container);
+        container.querySelector('#settings-back').addEventListener('click', () => show(container));
+        const settingsGp = startGamepadNav({
+          onBack: () => { settingsGp(); show(container); }
+        });
+        return;
+      }
+
       case 'stats':
         cleanup();
         import('../utils/Storage.js').then(({ Storage }) => {

@@ -16,8 +16,10 @@ export class KartController {
 
     // Stats → physics parameters
     const s = characterData.stats;
-    this.maxSpeed = 100 + s.speed * 16;      // 116-260 units/s
+    this.baseMaxSpeed = 100 + s.speed * 16;   // 116-260 units/s
+    this.maxSpeed = this.baseMaxSpeed;
     this.accelForce = 50 + s.acceleration * 10;
+    this._throttleTime = 0; // continuous throttle duration for log speed curve
     this.handling = 0.5 + s.handling * 0.12;  // turn rate
     this.weightFactor = s.weight;
     this.drag = 0.98;
@@ -111,10 +113,22 @@ export class KartController {
     // Throttle (slope affects acceleration)
     const throttle = input?.throttle || 0;
     if (throttle > 0 && (this.grounded || this.airborne)) {
+      this._throttleTime += delta;
+      // Logarithmic speed curve: maxSpeed grows unbounded with sustained throttle
+      // baseMaxSpeed is reached quickly, then it keeps climbing slowly
+      this.maxSpeed = this.baseMaxSpeed * (1 + 0.3 * Math.log(1 + this._throttleTime));
+
       // slopeGrade > 0 = uphill (less accel), < 0 = downhill (more accel)
       const slopeFactor = 1.0 - this.slopeGrade * 3.0;
-      const accel = this.accelForce * throttle * this.surfaceFriction * Math.max(0.2, slopeFactor);
+      // Acceleration decreases as speed approaches current maxSpeed (soft limit)
+      const speedRatio = this.speed / (this.maxSpeed * this.speedMultiplier * this.boostMultiplier || 1);
+      const accelFalloff = Math.max(0.05, 1.0 - speedRatio * 0.8);
+      const accel = this.accelForce * throttle * this.surfaceFriction * Math.max(0.2, slopeFactor) * accelFalloff;
       this.velocity.add(this._forward.clone().multiplyScalar(accel * delta));
+    } else {
+      // Reset throttle time when not accelerating
+      this._throttleTime = Math.max(0, this._throttleTime - delta * 3);
+      this.maxSpeed = this.baseMaxSpeed * (1 + 0.3 * Math.log(1 + this._throttleTime));
     }
 
     // Gravity along slope (push kart downhill even without throttle)
@@ -151,16 +165,9 @@ export class KartController {
     // Apply drag
     this.velocity.multiplyScalar(this.drag);
 
-    // Clamp horizontal speed
+    // Update speed (no hard cap — drag and accel falloff are the only limits)
     const hSpeedSq = this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z;
     this.speed = Math.sqrt(hSpeedSq);
-    const effectiveMax = this.maxSpeed * this.speedMultiplier * this.boostMultiplier;
-    if (this.speed > effectiveMax) {
-      const scale = effectiveMax / this.speed;
-      this.velocity.x *= scale;
-      this.velocity.z *= scale;
-      this.speed = effectiveMax;
-    }
 
     if (this.falling || this.airborne) {
       // Apply gravity when off-road or launched in the air
@@ -347,9 +354,11 @@ export class KartController {
   applyEffect(effect) {
     if (effect.onStart) effect.onStart(this);
     this.activeEffects.push(effect);
+    this._throttleTime = 0; // reset speed buildup on hit
   }
 
   applyKnockback(direction, force) {
+    this._throttleTime = 0;
     const knockback = direction.clone().multiplyScalar(force / Math.max(this.weightFactor, 1));
     this.velocity.add(knockback);
   }

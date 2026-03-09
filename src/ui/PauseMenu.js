@@ -203,6 +203,83 @@ export function applySettings(settings) {
   }
 }
 
+export function buildSettingsSectionsHTML(settings) {
+  const s = settings;
+  return `
+    <style>
+      .pause-section { background:rgba(0,0,0,0.3);border:1px solid #333;border-radius:4px;margin:4px 0;overflow:hidden; }
+      .pause-section-header { padding:clamp(8px,2vw,12px) clamp(10px,2vw,16px);cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+        font-size:clamp(13px,2.5vw,15px);font-weight:bold;color:#ff6633; }
+      .pause-section-header:hover { background:rgba(255,68,0,0.1); }
+      .pause-section-content { padding:clamp(6px,1.5vw,10px) clamp(10px,2vw,16px);display:none;border-top:1px solid #333; }
+      .pause-section-content.open { display:block; }
+      .setting-row { display:flex;justify-content:space-between;align-items:center;padding:clamp(4px,1vw,6px) 0;font-size:clamp(13px,2.5vw,15px); }
+      .setting-label { color:#ccc; }
+      input[type=range] { width:clamp(80px,20vw,120px);accent-color:#ff4400; }
+      select { background:#222;color:#ccc;border:1px solid #555;padding:clamp(4px,1vw,6px) 8px;font-size:clamp(12px,2.2vw,14px); }
+      .toggle { width:40px;height:22px;background:#333;border-radius:11px;position:relative;cursor:pointer;transition:0.2s;flex-shrink:0; }
+      .toggle.on { background:#ff4400; }
+      .toggle::after { content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;
+        background:white;border-radius:50%;transition:0.2s; }
+      .toggle.on::after { left:20px; }
+    </style>
+    <div class="pause-section">
+      <div class="pause-section-header" data-section="controls">CONTROLS <span>+</span></div>
+      <div class="pause-section-content" id="section-controls">${buildControlsSection(s)}</div>
+    </div>
+    <div class="pause-section">
+      <div class="pause-section-header" data-section="audio">AUDIO <span>+</span></div>
+      <div class="pause-section-content" id="section-audio">${buildAudioSection(s)}</div>
+    </div>
+    <div class="pause-section">
+      <div class="pause-section-header" data-section="video">VIDEO <span>+</span></div>
+      <div class="pause-section-content" id="section-video">${buildVideoSection(s)}</div>
+    </div>
+    <div class="pause-section">
+      <div class="pause-section-header" data-section="game">GAME <span>+</span></div>
+      <div class="pause-section-content" id="section-game">${buildGameSection(s)}</div>
+    </div>
+    <div class="pause-section">
+      <div class="pause-section-header" data-section="accessibility">ACCESSIBILITY <span>+</span></div>
+      <div class="pause-section-content" id="section-accessibility">${buildAccessibilitySection(s)}</div>
+    </div>
+  `;
+}
+
+export function bindSettingsEvents(container) {
+  container.querySelectorAll('.pause-section-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const content = header.nextElementSibling;
+      const span = header.querySelector('span');
+      content.classList.toggle('open');
+      span.textContent = content.classList.contains('open') ? '-' : '+';
+    });
+  });
+
+  container.querySelectorAll('input[type=range]').forEach(slider => {
+    slider.addEventListener('input', () => {
+      const key = slider.dataset.key;
+      const val = parseFloat(slider.value);
+      const numEl = slider.parentElement.querySelector('.slider-val');
+      if (numEl) numEl.textContent = Math.round(val * 100);
+      updateSetting(key, val);
+    });
+  });
+
+  container.querySelectorAll('select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      updateSetting(sel.dataset.key, sel.value);
+    });
+  });
+
+  container.querySelectorAll('.toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const isOn = toggle.classList.toggle('on');
+      updateSetting(toggle.dataset.key, isOn);
+    });
+  });
+}
+
 function slider(label, key, value, min = 0, max = 1, step = 0.01) {
   return `<div class="setting-row">
     <span class="setting-label">${label}</span>
