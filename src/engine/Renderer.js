@@ -260,7 +260,10 @@ export class Renderer {
       vp.camera.aspect = vpW / vpH;
       vp.camera.updateProjectionMatrix();
 
+      // Hide kart mesh for this viewport's player (cockpit cam)
+      if (vp.hideMesh) vp.hideMesh.visible = false;
       this.renderer.render(this.scene, vp.camera);
+      if (vp.hideMesh) vp.hideMesh.visible = true;
     }
 
     // FPS tracking

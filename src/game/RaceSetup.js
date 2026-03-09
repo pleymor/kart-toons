@@ -103,6 +103,13 @@ export async function startRace(config) {
     participants.push({ id: `player-${i}`, characterId: humanCharIds[i], kartController: kart, isHuman: true });
   }
 
+  // Hide own kart mesh in cockpit view for each human player
+  for (let i = 0; i < humanKarts.length; i++) {
+    if (renderer.viewports && renderer.viewports[i]) {
+      renderer.viewports[i].hideMesh = humanKarts[i].mesh;
+    }
+  }
+
   // Crew mode: attach turret to player kart
   if (isCrewMode && humanKarts.length > 0) {
     turretController = new TurretController(humanKarts[0]);
@@ -300,7 +307,9 @@ export async function startRace(config) {
       const mh = Math.round(mw * 0.25);
       const mx = Math.round((cw - mw) / 2);
       const my = ch - mh - Math.round(ch * 0.01);
+      kart.mesh.visible = false;
       renderer.renderRearview(rearviewCam, { x: mx, y: my, w: mw, h: mh });
+      kart.mesh.visible = true;
     }
 
     // HUD (show P1 data for now, multi-player HUD is per-viewport overlay)
@@ -344,15 +353,22 @@ const _rearviewLookAt = new THREE.Vector3();
 
 function updateCockpitCamera(camera, kart, lookBehind) {
   const sign = lookBehind ? -1 : 1;
+  const pitch = kart.pitchAngle || 0;
+  // Camera position: offset up from kart, tilted with pitch
+  const upY = Math.cos(pitch) * 1.6;
+  const upZ = Math.sin(pitch) * 1.6;
   camera.position.set(
     kart.position.x,
-    kart.position.y + 1.6,
-    kart.position.z
+    kart.position.y + upY,
+    kart.position.z - sign * upZ
   );
+  // Look direction follows yaw + pitch
+  const fwd = 50;
+  const lookY = kart.position.y + upY + Math.sin(pitch) * fwd * sign;
   _cockpitLookAt.set(
-    kart.position.x + sign * Math.sin(kart.yaw) * 50,
-    kart.position.y + 1.2,
-    kart.position.z + sign * Math.cos(kart.yaw) * 50
+    kart.position.x + sign * Math.sin(kart.yaw) * fwd,
+    lookY,
+    kart.position.z + sign * Math.cos(kart.yaw) * fwd
   );
   camera.lookAt(_cockpitLookAt);
   camera.fov = 85;
