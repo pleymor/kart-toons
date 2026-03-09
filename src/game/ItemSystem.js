@@ -277,16 +277,20 @@ export class ItemSystem {
         mesh.position.copy(dropPos);
         this.scene.add(mesh);
 
+        let mineArmed = false;
+        const mineArmDelay = 1.5; // seconds before it can hit the owner
+        let mineArmTimer = 0;
         this.activeItems.push({
           type: 'mine',
           position: dropPos.clone(),
           mesh,
           timer: 30,
           ownerId: user.id,
-          update: () => {
-            // Check proximity to karts
+          update: (dt) => {
+            mineArmTimer += dt;
+            if (!mineArmed && mineArmTimer >= mineArmDelay) mineArmed = true;
             for (const p of this.participants) {
-              if (p.id === user.id) continue;
+              if (p.id === user.id && !mineArmed) continue;
               const d = p.kartController.position.distanceTo(dropPos);
               if (d < 3) {
                 p.kartController.applyEffect({
@@ -356,14 +360,19 @@ export class ItemSystem {
         mesh.position.y += 0.05;
         this.scene.add(mesh);
 
+        let gelArmed = false;
+        let gelArmTimer = 0;
+        const gelArmDelay = 1.5;
         this.activeItems.push({
           type: 'gel',
           position: gelPos,
           mesh,
           timer: 15,
-          update: () => {
+          update: (dt) => {
+            gelArmTimer += dt;
+            if (!gelArmed && gelArmTimer >= gelArmDelay) gelArmed = true;
             for (const p of this.participants) {
-              if (p.id === user.id) continue;
+              if (p.id === user.id && !gelArmed) continue;
               const d = p.kartController.position.distanceTo(gelPos);
               if (d < 6) {
                 p.kartController.surfaceFriction = 0.2;

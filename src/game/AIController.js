@@ -110,6 +110,7 @@ export class AIController {
       this._itemTimer = 0;
     }
 
+    this.input = input;
     this.kart.update(delta, input);
   }
 

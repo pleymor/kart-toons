@@ -110,7 +110,7 @@ export class KartController {
 
     // Throttle (slope affects acceleration)
     const throttle = input?.throttle || 0;
-    if (throttle > 0 && this.grounded) {
+    if (throttle > 0 && (this.grounded || this.airborne)) {
       // slopeGrade > 0 = uphill (less accel), < 0 = downhill (more accel)
       const slopeFactor = 1.0 - this.slopeGrade * 3.0;
       const accel = this.accelForce * throttle * this.surfaceFriction * Math.max(0.2, slopeFactor);

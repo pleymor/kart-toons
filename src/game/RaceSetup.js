@@ -214,8 +214,12 @@ export async function startRace(config) {
       }
 
       // AI
-      for (const ai of aiControllers) {
+      for (let i = 0; i < aiControllers.length; i++) {
+        const ai = aiControllers[i];
         ai.update(delta);
+        if (ai.input?.useItem) {
+          itemSystem.useItem(`ai-${i}`);
+        }
       }
 
       // Kart-to-kart collisions
