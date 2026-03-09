@@ -1365,10 +1365,13 @@ function buildTrackElements(renderer, circuit, waypoints) {
     const wp = waypoints[idx];
     const next = waypoints[(idx + 1) % n];
     const dx = next.x - wp.x;
+    const dy = next.y - wp.y;
     const dz = next.z - wp.z;
+    const hDist = Math.sqrt(dx * dx + dz * dz);
     const yaw = Math.atan2(dx, dz);
+    const pitch = Math.atan2(dy, hDist);
 
-    // Blue chevrons (3 V-shapes in a row, flat on the road)
+    // Blue chevrons (3 V-shapes in a row, following road slope)
     const chevronGroup = new THREE.Group();
     const chevronMat = new THREE.MeshStandardMaterial({
       color: 0x2288ff, emissive: 0x1166dd, emissiveIntensity: 1.0,
@@ -1382,13 +1385,13 @@ function buildTrackElements(renderer, circuit, waypoints) {
         const strip = new THREE.Mesh(stripGeo, chevronMat);
         strip.rotation.x = -Math.PI / 2;
         strip.rotation.z = side * 0.5; // angle to form V
-        strip.position.set(side * 0.85, 0.06, -c * 2.0);
+        strip.position.set(side * 0.85, 0.25, -c * 2.0);
         chevronGroup.add(strip);
       }
     }
 
     chevronGroup.position.set(wp.x, wp.y, wp.z);
-    chevronGroup.rotation.y = yaw;
+    chevronGroup.lookAt(next.x, next.y, next.z);
     renderer.scene.add(chevronGroup);
 
     elements.push({
@@ -1414,17 +1417,19 @@ function buildTrackElements(renderer, circuit, waypoints) {
 
     const slowGroup = new THREE.Group();
 
-    // Red/white striped rumble strip
+    // Red/white striped rumble strip (partial width, offset to one side)
     const stripCount = 5;
+    const stripW = trackWidth * 0.25;
+    const lateralOffset = (rng() > 0.5 ? 1 : -1) * trackWidth * 0.15;
     for (let s = 0; s < stripCount; s++) {
-      const stripGeo = new THREE.PlaneGeometry(trackWidth * 0.6, 0.6);
+      const stripGeo = new THREE.PlaneGeometry(stripW, 0.6);
       const isRed = s % 2 === 0;
       const stripMat = new THREE.MeshStandardMaterial({
         color: isRed ? 0xdd2222 : 0xeeeeee, roughness: 0.7, side: THREE.DoubleSide
       });
       const strip = new THREE.Mesh(stripGeo, stripMat);
       strip.rotation.x = -Math.PI / 2;
-      strip.position.set(0, 0.04, (s - 2) * 0.7);
+      strip.position.set(lateralOffset, 0.04, (s - 2) * 0.7);
       slowGroup.add(strip);
     }
 
@@ -1528,12 +1533,17 @@ function checkTrackElements(elements, participants, delta) {
         cooldowns.set(cooldownKey, el.duration + 0.5);
 
       } else if (el.type === 'slowdown') {
-        // Reduce speed momentarily
+        // Reduce speed and cancel any active boost effects
         kart.speed *= el.speedFactor;
-        const velScale = el.speedFactor;
-        kart.velocity.x *= velScale;
-        kart.velocity.z *= velScale;
-        kart._throttleTime = Math.max(0, kart._throttleTime - 0.5);
+        kart.velocity.x *= el.speedFactor;
+        kart.velocity.z *= el.speedFactor;
+        kart.activeEffects = kart.activeEffects.filter(e => {
+          if (e.keepMomentum) { // boost effects use keepMomentum
+            if (e.onEnd) e.onEnd(kart);
+            return false;
+          }
+          return true;
+        });
         cooldowns.set(cooldownKey, 1.5);
       }
     }
