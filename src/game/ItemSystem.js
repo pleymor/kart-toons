@@ -80,9 +80,35 @@ const TRAP_TRIGGER_SFX = {
 };
 
 // Shared geometries for item meshes
-const _crateGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+const _crateGeo = new THREE.BoxGeometry(1.4, 1.4, 1.4);
+const _crateInnerGeo = new THREE.BoxGeometry(1.05, 1.05, 1.05);
 const _projectileGeo = new THREE.SphereGeometry(0.3, 8, 8);
 const _mineGeo = new THREE.SphereGeometry(0.5, 8, 8);
+
+// Shared materials for crates (created once)
+const _shellMat = new THREE.MeshPhongMaterial({
+  color: 0xffaa00, emissive: 0xff6600, emissiveIntensity: 0.4,
+  transparent: true, opacity: 0.55, side: THREE.DoubleSide
+});
+const _coreMat = new THREE.MeshPhongMaterial({
+  color: 0xffdd44, emissive: 0xffaa00, emissiveIntensity: 0.8
+});
+// "?" canvas texture (shared by all crates)
+let _questionTexture = null;
+function _getQuestionTexture() {
+  if (_questionTexture) return _questionTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 64, 64);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 48px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('?', 32, 30);
+  _questionTexture = new THREE.CanvasTexture(canvas);
+  return _questionTexture;
+}
 
 export class ItemSystem {
   constructor(scene, circuit, participants) {
@@ -120,23 +146,42 @@ export class ItemSystem {
   }
 
   _createCrateMesh(position) {
-    const mat = new THREE.MeshPhongMaterial({
-      color: 0xffcc00,
-      emissive: 0x553300,
-      emissiveIntensity: 0.3
-    });
-    const mesh = new THREE.Mesh(_crateGeo, mat);
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    return mesh;
+    const group = new THREE.Group();
+
+    // Outer translucent shell (shared material — clone for per-crate opacity pulse)
+    const shell = new THREE.Mesh(_crateGeo, _shellMat.clone());
+    group.add(shell);
+
+    // Inner glowing core
+    const core = new THREE.Mesh(_crateInnerGeo, _coreMat);
+    group.add(core);
+
+    // "?" sprite on top
+    const tex = _getQuestionTexture();
+    const spriteMat = new THREE.SpriteMaterial({ map: tex, color: 0xffffff });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(1.0, 1.0, 1);
+    sprite.position.set(0, 1.2, 0);
+    group.add(sprite);
+
+    group.position.copy(position);
+    return group;
   }
 
   update(delta) {
-    // Rotate crates
-    for (const crate of this.crates) {
+    this._crateTime = (this._crateTime || 0) + delta;
+    // Animate crates: spin, bob, pulse glow
+    for (let i = 0; i < this.crates.length; i++) {
+      const crate = this.crates[i];
       if (crate.active) {
-        crate.mesh.rotation.y += delta * 2;
-        crate.mesh.rotation.x += delta * 0.5;
+        crate.mesh.rotation.y += delta * 1.5;
+        // Gentle bob up/down
+        const bob = Math.sin(this._crateTime * 2 + i * 1.7) * 0.3;
+        crate.mesh.position.y = crate.position.y + bob;
+        // Pulse the shell opacity and glow
+        const pulse = 0.4 + Math.sin(this._crateTime * 3 + i * 2.1) * 0.15;
+        const shell = crate.mesh.children[0];
+        if (shell?.material) shell.material.opacity = pulse;
         crate.mesh.visible = true;
       } else {
         crate.mesh.visible = false;
@@ -266,13 +311,10 @@ export class ItemSystem {
           onStart() {},
           onTick(k, dt) {
             const elapsed = totalDur - this.timer;
-            const rampEnd = totalDur * 0.3;
             const fadeStart = totalDur * 0.7;
             let t;
-            if (elapsed < rampEnd) {
-              t = elapsed / rampEnd; // linear ramp up
-            } else if (elapsed < fadeStart) {
-              t = 1.0;
+            if (elapsed < fadeStart) {
+              t = 1.0; // full power immediately
             } else {
               t = 1.0 - (elapsed - fadeStart) / (totalDur - fadeStart); // linear fade
             }

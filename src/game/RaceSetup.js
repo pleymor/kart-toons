@@ -1510,13 +1510,10 @@ function checkTrackElements(elements, participants, delta) {
           onStart() {},
           onTick(k, dt) {
             const elapsed = totalDur - this.timer;
-            const rampEnd = totalDur * 0.3;
             const fadeStart = totalDur * 0.7;
             let t;
-            if (elapsed < rampEnd) {
-              t = elapsed / rampEnd; // linear ramp up
-            } else if (elapsed < fadeStart) {
-              t = 1.0;
+            if (elapsed < fadeStart) {
+              t = 1.0; // full power immediately
             } else {
               t = 1.0 - (elapsed - fadeStart) / (totalDur - fadeStart); // linear fade
             }
