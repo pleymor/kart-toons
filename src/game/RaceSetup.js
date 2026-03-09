@@ -360,10 +360,15 @@ function updateCockpitCamera(camera, kart, lookBehind) {
 }
 
 // --- Shared kart geometries ---
-// Wheels
+// Wheels & rims
 const _wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 12);
 const _bigWheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 12);
 const _trackWheelGeo = new THREE.BoxGeometry(0.4, 0.3, 2.4);
+const _rimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.26, 6);
+const _bigRimGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.36, 6);
+const _hubCapGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.04, 8);
+const _wheelArchGeo = new THREE.TorusGeometry(0.38, 0.06, 4, 8, Math.PI);
+const _bigWheelArchGeo = new THREE.TorusGeometry(0.48, 0.07, 4, 8, Math.PI);
 // Bodies
 const _standardBodyGeo = new THREE.BoxGeometry(2, 0.6, 3);
 const _sleekBodyGeo = new THREE.BoxGeometry(1.6, 0.4, 3.4);
@@ -373,21 +378,56 @@ const _wideBodyGeo = new THREE.BoxGeometry(2.2, 0.5, 2.8);
 const _standardCockpitGeo = new THREE.BoxGeometry(1.2, 0.5, 1.0);
 const _sportCockpitGeo = new THREE.BoxGeometry(1.0, 0.4, 0.8);
 const _domeGeo = new THREE.SphereGeometry(0.55, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+// Lights
+const _headlightGeo = new THREE.SphereGeometry(0.1, 6, 6);
+const _taillightGeo = new THREE.BoxGeometry(0.25, 0.12, 0.06);
+const _brakeLightGeo = new THREE.BoxGeometry(0.8, 0.08, 0.04);
+// Grille & intake
+const _grilleGeo = new THREE.BoxGeometry(1.2, 0.25, 0.08);
+const _grilleSlotGeo = new THREE.BoxGeometry(0.18, 0.04, 0.09);
+const _airIntakeGeo = new THREE.BoxGeometry(0.5, 0.2, 0.3);
+const _scoopGeo = new THREE.BoxGeometry(0.4, 0.15, 0.5);
+// Windshield & mirrors
+const _windshieldGeo = new THREE.BoxGeometry(1.1, 0.5, 0.06);
+const _sportWindshieldGeo = new THREE.BoxGeometry(0.9, 0.35, 0.05);
+const _mirrorArmGeo = new THREE.BoxGeometry(0.3, 0.04, 0.04);
+const _mirrorGeo = new THREE.BoxGeometry(0.15, 0.1, 0.04);
+// Dashboard
+const _dashboardGeo = new THREE.BoxGeometry(1.0, 0.15, 0.4);
+const _steeringWheelGeo = new THREE.TorusGeometry(0.12, 0.02, 4, 8);
+const _steeringColumnGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.15, 4);
+const _gaugeGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.02, 8);
 // Details
 const _spoilerGeo = new THREE.BoxGeometry(1.8, 0.08, 0.4);
 const _spoilerPostGeo = new THREE.BoxGeometry(0.08, 0.4, 0.08);
 const _exhaustGeo = new THREE.CylinderGeometry(0.1, 0.15, 0.5, 8);
+const _smallExhaustGeo = new THREE.CylinderGeometry(0.06, 0.1, 0.35, 6);
 const _noseGeo = new THREE.ConeGeometry(0.3, 0.8, 6);
 const _sideSkirtGeo = new THREE.BoxGeometry(0.15, 0.2, 2.6);
 const _hoverPadGeo = new THREE.CylinderGeometry(0.6, 0.5, 0.12, 8);
+const _hoverGlowGeo = new THREE.CylinderGeometry(0.45, 0.35, 0.04, 8);
 const _antennaGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 4);
 const _antennaTipGeo = new THREE.SphereGeometry(0.08, 6, 6);
 const _engineBlockGeo = new THREE.BoxGeometry(1.0, 0.4, 0.6);
+const _enginePipeGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6);
+const _engineRibGeo = new THREE.BoxGeometry(1.05, 0.06, 0.08);
 const _rollBarGeo = new THREE.TorusGeometry(0.5, 0.04, 6, 12, Math.PI);
 const _bumperGeo = new THREE.BoxGeometry(2.0, 0.2, 0.15);
+const _rearBumperGeo = new THREE.BoxGeometry(1.8, 0.15, 0.1);
 const _finGeo = new THREE.BoxGeometry(0.06, 0.5, 0.8);
+const _panelLineGeo = new THREE.BoxGeometry(0.02, 0.02, 2.6);
+const _hoodScoopGeo = new THREE.BoxGeometry(0.4, 0.12, 0.6);
+const _floorPanGeo = new THREE.BoxGeometry(1.8, 0.04, 2.8);
+const _seatGeo = new THREE.BoxGeometry(0.5, 0.5, 0.4);
+const _seatBackGeo = new THREE.BoxGeometry(0.5, 0.5, 0.08);
+const _treadSegGeo = new THREE.BoxGeometry(0.42, 0.06, 0.15);
+const _trackGuardGeo = new THREE.BoxGeometry(0.5, 0.15, 2.5);
+const _turretRingGeo = new THREE.TorusGeometry(0.3, 0.04, 6, 10);
+const _thruNozzleGeo = new THREE.ConeGeometry(0.2, 0.4, 8);
+const _energyRingGeo = new THREE.TorusGeometry(0.5, 0.03, 6, 12);
+const _sideVentGeo = new THREE.BoxGeometry(0.08, 0.15, 0.4);
 
-function createKartMesh(renderer, character) {
+export function createKartMesh(renderer, character) {
   const type = character.kartPhysicsType || 'wheeled';
   const col = character.kartColor;
   const acc = character.kartAccent;
@@ -406,11 +446,64 @@ function buildWheeledKart(renderer, col, acc, weight) {
   const heavy = weight >= 6;
   const light = weight <= 3;
 
-  // Body: heavy=big tank, light=sleek racer, mid=standard
+  // Floor pan
+  const floor = renderer.createToonMesh(_floorPanGeo, 0x1a1a1a, { outlineWidth: 0.01 });
+  floor.position.y = 0.22;
+  group.add(floor);
+
+  // Body
   const bodyGeo = heavy ? _heavyBodyGeo : (light ? _sleekBodyGeo : _standardBodyGeo);
   const body = renderer.createToonMesh(bodyGeo, col, { outlineWidth: 0.04 });
   body.position.y = heavy ? 0.55 : 0.5;
   group.add(body);
+
+  // Panel lines (body seams)
+  for (const side of [-0.45, 0.45]) {
+    const line = renderer.createToonMesh(_panelLineGeo, 0x111111, { outlineWidth: 0 });
+    line.position.set(side, heavy ? 0.86 : 0.81, 0);
+    group.add(line);
+  }
+
+  // Hood scoop (front top)
+  if (!light) {
+    const scoop = renderer.createToonMesh(_hoodScoopGeo, col, { outlineWidth: 0.02 });
+    scoop.position.set(0, heavy ? 0.96 : 0.82, 0.7);
+    group.add(scoop);
+  }
+
+  // Front grille
+  const grille = renderer.createToonMesh(_grilleGeo, 0x111111, { outlineWidth: 0.02 });
+  grille.position.set(0, heavy ? 0.45 : 0.4, heavy ? 1.61 : (light ? 1.71 : 1.51));
+  group.add(grille);
+  // Grille slots
+  for (let i = -2; i <= 2; i++) {
+    const slot = renderer.createToonMesh(_grilleSlotGeo, 0x080808, { outlineWidth: 0 });
+    slot.position.set(i * 0.22, grille.position.y, grille.position.z + 0.01);
+    group.add(slot);
+  }
+
+  // Headlights
+  for (const side of [-0.5, 0.5]) {
+    const hl = renderer.createToonMesh(_headlightGeo, 0xffffcc, { outlineWidth: 0.01 });
+    hl.position.set(side, heavy ? 0.65 : 0.55, grille.position.z + 0.02);
+    group.add(hl);
+  }
+
+  // Taillights
+  for (const side of [-0.4, 0.4]) {
+    const tl = renderer.createToonMesh(_taillightGeo, 0xcc0000, { outlineWidth: 0.01 });
+    tl.position.set(side, heavy ? 0.65 : 0.55, heavy ? -1.61 : (light ? -1.71 : -1.51));
+    group.add(tl);
+  }
+  // Center brake light
+  const brake = renderer.createToonMesh(_brakeLightGeo, 0xaa0000, { outlineWidth: 0.01 });
+  brake.position.set(0, heavy ? 0.96 : 0.81, heavy ? -1.61 : (light ? -1.71 : -1.51));
+  group.add(brake);
+
+  // Rear bumper
+  const rBumper = renderer.createToonMesh(_rearBumperGeo, 0x333333, { outlineWidth: 0.01 });
+  rBumper.position.set(0, 0.28, heavy ? -1.62 : (light ? -1.72 : -1.52));
+  group.add(rBumper);
 
   // Cockpit
   const cockpitGeo = light ? _sportCockpitGeo : _standardCockpitGeo;
@@ -418,8 +511,56 @@ function buildWheeledKart(renderer, col, acc, weight) {
   cockpit.position.set(0, heavy ? 1.15 : 1.0, -0.2);
   group.add(cockpit);
 
-  // Wheels: bigger for heavy
+  // Windshield
+  const wsGeo = light ? _sportWindshieldGeo : _windshieldGeo;
+  const ws = renderer.createToonMesh(wsGeo, 0x88aacc, { outlineWidth: 0.01 });
+  ws.rotation.x = -0.25;
+  ws.position.set(0, heavy ? 1.3 : 1.15, 0.3);
+  group.add(ws);
+
+  // Side mirrors
+  for (const side of [-0.65, 0.65]) {
+    const arm = renderer.createToonMesh(_mirrorArmGeo, 0x333333, { outlineWidth: 0 });
+    arm.position.set(side * 1.3, heavy ? 1.0 : 0.85, 0.3);
+    group.add(arm);
+    const mirror = renderer.createToonMesh(_mirrorGeo, 0x88aacc, { outlineWidth: 0.01 });
+    mirror.position.set(side * 1.45, heavy ? 1.0 : 0.85, 0.3);
+    group.add(mirror);
+  }
+
+  // Dashboard
+  const dash = renderer.createToonMesh(_dashboardGeo, 0x222222, { outlineWidth: 0.01 });
+  dash.position.set(0, heavy ? 1.05 : 0.9, 0.2);
+  group.add(dash);
+  // Steering wheel
+  const stCol = renderer.createToonMesh(_steeringColumnGeo, 0x333333, { outlineWidth: 0 });
+  stCol.rotation.x = -0.5;
+  stCol.position.set(0, heavy ? 1.15 : 1.0, 0.15);
+  group.add(stCol);
+  const stWheel = renderer.createToonMesh(_steeringWheelGeo, 0x222222, { outlineWidth: 0.01 });
+  stWheel.rotation.x = -0.5;
+  stWheel.position.set(0, heavy ? 1.22 : 1.07, 0.1);
+  group.add(stWheel);
+  // Gauges
+  for (const gx of [-0.2, 0.0, 0.2]) {
+    const gauge = renderer.createToonMesh(_gaugeGeo, 0x115533, { outlineWidth: 0 });
+    gauge.rotation.x = Math.PI / 2;
+    gauge.position.set(gx, heavy ? 1.13 : 0.98, 0.35);
+    group.add(gauge);
+  }
+
+  // Seat
+  const seat = renderer.createToonMesh(_seatGeo, 0x222222, { outlineWidth: 0.01 });
+  seat.position.set(0, heavy ? 0.95 : 0.8, -0.4);
+  group.add(seat);
+  const seatBack = renderer.createToonMesh(_seatBackGeo, 0x222222, { outlineWidth: 0.01 });
+  seatBack.position.set(0, heavy ? 1.2 : 1.05, -0.56);
+  group.add(seatBack);
+
+  // Wheels with rims and arches
   const wGeo = heavy ? _bigWheelGeo : _wheelGeo;
+  const rGeo = heavy ? _bigRimGeo : _rimGeo;
+  const archGeo = heavy ? _bigWheelArchGeo : _wheelArchGeo;
   const positions = heavy
     ? [[-1.1, 0.45, 1.1], [1.1, 0.45, 1.1], [-1.1, 0.45, -1.1], [1.1, 0.45, -1.1]]
     : [[-0.9, 0.35, 1.0], [0.9, 0.35, 1.0], [-0.9, 0.35, -1.0], [0.9, 0.35, -1.0]];
@@ -428,9 +569,34 @@ function buildWheeledKart(renderer, col, acc, weight) {
     wheel.rotation.z = Math.PI / 2;
     wheel.position.set(x, y, z);
     group.add(wheel);
+    // Rim
+    const rim = renderer.createToonMesh(rGeo, 0x999999, { outlineWidth: 0.01 });
+    rim.rotation.z = Math.PI / 2;
+    rim.position.set(x > 0 ? x + 0.02 : x - 0.02, y, z);
+    group.add(rim);
+    // Hub cap
+    const hub = renderer.createToonMesh(_hubCapGeo, acc, { outlineWidth: 0 });
+    hub.rotation.z = Math.PI / 2;
+    hub.position.set(x > 0 ? x + 0.13 : x - 0.13, y, z);
+    group.add(hub);
+    // Wheel arch
+    const arch = renderer.createToonMesh(archGeo, col, { outlineWidth: 0.01 });
+    arch.rotation.z = x > 0 ? 0 : Math.PI;
+    arch.rotation.y = Math.PI / 2;
+    arch.position.set(x > 0 ? x - 0.15 : x + 0.15, y + 0.1, z);
+    group.add(arch);
   }
 
-  // Light karts: spoiler + side skirts
+  // Side vents
+  for (const side of [-1.0, 1.0]) {
+    for (let i = 0; i < 3; i++) {
+      const vent = renderer.createToonMesh(_sideVentGeo, 0x111111, { outlineWidth: 0 });
+      vent.position.set(side * (heavy ? 1.21 : 1.01), heavy ? 0.6 : 0.5, -0.2 + i * 0.25);
+      group.add(vent);
+    }
+  }
+
+  // Light karts: spoiler + side skirts + air intake
   if (light) {
     const spoiler = renderer.createToonMesh(_spoilerGeo, acc, { outlineWidth: 0.02 });
     spoiler.position.set(0, 1.15, -1.5);
@@ -445,9 +611,13 @@ function buildWheeledKart(renderer, col, acc, weight) {
       skirt.position.set(side, 0.35, 0);
       group.add(skirt);
     }
+    // Rear air intake
+    const intake = renderer.createToonMesh(_airIntakeGeo, 0x222222, { outlineWidth: 0.01 });
+    intake.position.set(0, 0.95, -1.2);
+    group.add(intake);
   }
 
-  // Heavy karts: bumper + engine block + exhaust pipes
+  // Heavy karts: bumper + engine block + exhaust pipes + engine ribs
   if (heavy) {
     const bumper = renderer.createToonMesh(_bumperGeo, 0x333333, { outlineWidth: 0.02 });
     bumper.position.set(0, 0.4, 1.65);
@@ -455,6 +625,19 @@ function buildWheeledKart(renderer, col, acc, weight) {
     const engine = renderer.createToonMesh(_engineBlockGeo, 0x444444, { outlineWidth: 0.02 });
     engine.position.set(0, 1.15, -1.2);
     group.add(engine);
+    // Engine ribs
+    for (let i = -1; i <= 1; i++) {
+      const rib = renderer.createToonMesh(_engineRibGeo, 0x555555, { outlineWidth: 0 });
+      rib.position.set(0, 1.36, -1.2 + i * 0.15);
+      group.add(rib);
+    }
+    // Engine pipes
+    for (const side of [-0.35, 0.35]) {
+      const pipe = renderer.createToonMesh(_enginePipeGeo, 0x666666, { outlineWidth: 0.01 });
+      pipe.rotation.z = Math.PI / 2;
+      pipe.position.set(side, 1.25, -0.9);
+      group.add(pipe);
+    }
     for (const side of [-0.35, 0.35]) {
       const exhaust = renderer.createToonMesh(_exhaustGeo, 0x333333, { outlineWidth: 0.01 });
       exhaust.rotation.x = -Math.PI / 4;
@@ -463,7 +646,7 @@ function buildWheeledKart(renderer, col, acc, weight) {
     }
   }
 
-  // Mid-weight: roll bar + exhaust
+  // Mid-weight: roll bar + exhaust + scoop
   if (!heavy && !light) {
     const rollBar = renderer.createToonMesh(_rollBarGeo, 0x555555, { outlineWidth: 0.02 });
     rollBar.rotation.y = Math.PI / 2;
@@ -473,6 +656,15 @@ function buildWheeledKart(renderer, col, acc, weight) {
     exhaust.rotation.x = -Math.PI / 5;
     exhaust.position.set(0.5, 0.7, -1.6);
     group.add(exhaust);
+    // Second exhaust
+    const exhaust2 = renderer.createToonMesh(_smallExhaustGeo, 0x333333, { outlineWidth: 0.01 });
+    exhaust2.rotation.x = -Math.PI / 5;
+    exhaust2.position.set(-0.5, 0.7, -1.6);
+    group.add(exhaust2);
+    // Top scoop
+    const scoop = renderer.createToonMesh(_scoopGeo, acc, { outlineWidth: 0.01 });
+    scoop.position.set(0, 1.05, 0.6);
+    group.add(scoop);
   }
 
   group.castShadow = true;
@@ -482,29 +674,104 @@ function buildWheeledKart(renderer, col, acc, weight) {
 function buildHoverKart(renderer, col, acc) {
   const group = new THREE.Group();
 
+  // Floor pan
+  const floor = renderer.createToonMesh(_floorPanGeo, 0x1a1a1a, { outlineWidth: 0.01 });
+  floor.position.y = 0.52;
+  group.add(floor);
+
   // Sleek flat body
   const body = renderer.createToonMesh(_sleekBodyGeo, col, { outlineWidth: 0.04 });
   body.position.y = 0.7;
   group.add(body);
+
+  // Panel lines
+  for (const side of [-0.35, 0.35]) {
+    const line = renderer.createToonMesh(_panelLineGeo, 0x111111, { outlineWidth: 0 });
+    line.position.set(side, 0.91, 0);
+    group.add(line);
+  }
 
   // Dome cockpit
   const dome = renderer.createToonMesh(_domeGeo, acc, { outlineWidth: 0.03 });
   dome.position.set(0, 1.1, -0.1);
   group.add(dome);
 
-  // Hover pads (no wheels)
+  // Windshield (curved, angled)
+  const ws = renderer.createToonMesh(_sportWindshieldGeo, 0x88ccee, { outlineWidth: 0.01 });
+  ws.rotation.x = -0.3;
+  ws.position.set(0, 1.15, 0.35);
+  group.add(ws);
+
+  // Dashboard
+  const dash = renderer.createToonMesh(_dashboardGeo, 0x222222, { outlineWidth: 0.01 });
+  dash.position.set(0, 0.95, 0.2);
+  group.add(dash);
+  // Gauges (holographic style)
+  for (const gx of [-0.15, 0.15]) {
+    const gauge = renderer.createToonMesh(_gaugeGeo, 0x00ffaa, { outlineWidth: 0 });
+    gauge.rotation.x = Math.PI / 2;
+    gauge.position.set(gx, 1.03, 0.35);
+    group.add(gauge);
+  }
+
+  // Seat
+  const seat = renderer.createToonMesh(_seatGeo, 0x333333, { outlineWidth: 0.01 });
+  seat.position.set(0, 0.85, -0.35);
+  group.add(seat);
+  const seatBack = renderer.createToonMesh(_seatBackGeo, 0x333333, { outlineWidth: 0.01 });
+  seatBack.position.set(0, 1.1, -0.52);
+  group.add(seatBack);
+
+  // Hover pads with glow rings
   const padPositions = [[-0.7, 0.35, 1.0], [0.7, 0.35, 1.0], [-0.7, 0.35, -1.0], [0.7, 0.35, -1.0]];
   for (const [x, y, z] of padPositions) {
     const pad = renderer.createToonMesh(_hoverPadGeo, acc, { outlineWidth: 0.02 });
     pad.position.set(x, y, z);
     group.add(pad);
+    // Glow underside
+    const glow = renderer.createToonMesh(_hoverGlowGeo, 0x00ffff, { outlineWidth: 0 });
+    glow.position.set(x, y - 0.08, z);
+    group.add(glow);
   }
 
-  // Side fins
+  // Energy ring (central hover ring under body)
+  const eRing = renderer.createToonMesh(_energyRingGeo, 0x00ffcc, { outlineWidth: 0.01 });
+  eRing.position.set(0, 0.4, 0);
+  group.add(eRing);
+
+  // Headlights
+  for (const side of [-0.45, 0.45]) {
+    const hl = renderer.createToonMesh(_headlightGeo, 0xccffee, { outlineWidth: 0.01 });
+    hl.position.set(side, 0.75, 1.72);
+    group.add(hl);
+  }
+
+  // Taillights (glowing bars)
+  for (const side of [-0.35, 0.35]) {
+    const tl = renderer.createToonMesh(_taillightGeo, 0x00aaff, { outlineWidth: 0.01 });
+    tl.position.set(side, 0.75, -1.72);
+    group.add(tl);
+  }
+
+  // Side fins (taller, with accent stripe)
   for (const side of [-0.85, 0.85]) {
     const fin = renderer.createToonMesh(_finGeo, acc, { outlineWidth: 0.01 });
     fin.position.set(side, 0.9, -1.2);
     group.add(fin);
+    // Accent stripe on fin
+    const stripe = renderer.createToonMesh(
+      new THREE.BoxGeometry(0.07, 0.08, 0.6), 0x00ffcc, { outlineWidth: 0 }
+    );
+    stripe.position.set(side, 1.1, -1.2);
+    group.add(stripe);
+  }
+
+  // Thruster nozzles (rear)
+  for (const side of [-0.3, 0.3]) {
+    const nozzle = renderer.createToonMesh(_thruNozzleGeo, 0x555555, { outlineWidth: 0.01 });
+    nozzle.rotation.x = Math.PI / 2;
+    nozzle.position.set(side, 0.65, -1.8);
+    group.add(nozzle);
   }
 
   // Antenna
@@ -521,6 +788,15 @@ function buildHoverKart(renderer, col, acc) {
   nose.position.set(0, 0.7, 1.9);
   group.add(nose);
 
+  // Side vents (energy slits)
+  for (const side of [-0.81, 0.81]) {
+    for (let i = 0; i < 2; i++) {
+      const vent = renderer.createToonMesh(_sideVentGeo, 0x00ddaa, { outlineWidth: 0 });
+      vent.position.set(side, 0.7, 0.3 + i * 0.35);
+      group.add(vent);
+    }
+  }
+
   group.castShadow = true;
   return group;
 }
@@ -528,36 +804,121 @@ function buildHoverKart(renderer, col, acc) {
 function buildTrackedKart(renderer, col, acc, weight) {
   const group = new THREE.Group();
 
+  // Floor pan
+  const floor = renderer.createToonMesh(_floorPanGeo, 0x1a1a1a, { outlineWidth: 0.01 });
+  floor.position.y = 0.22;
+  group.add(floor);
+
   // Wide heavy body
   const body = renderer.createToonMesh(_heavyBodyGeo, col, { outlineWidth: 0.04 });
   body.position.y = 0.6;
   group.add(body);
 
-  // Boxy cockpit
+  // Panel lines
+  for (const side of [-0.55, 0.55]) {
+    const line = renderer.createToonMesh(_panelLineGeo, 0x111111, { outlineWidth: 0 });
+    line.position.set(side, 1.01, 0);
+    group.add(line);
+  }
+
+  // Hood scoop (armored look)
+  const scoop = renderer.createToonMesh(_hoodScoopGeo, 0x444444, { outlineWidth: 0.02 });
+  scoop.position.set(0, 1.02, 0.8);
+  group.add(scoop);
+
+  // Front grille (heavy armored)
+  const grille = renderer.createToonMesh(_grilleGeo, 0x111111, { outlineWidth: 0.02 });
+  grille.position.set(0, 0.5, 1.61);
+  group.add(grille);
+
+  // Headlights (armored, inset)
+  for (const side of [-0.55, 0.55]) {
+    const hl = renderer.createToonMesh(_headlightGeo, 0xffeeaa, { outlineWidth: 0.01 });
+    hl.position.set(side, 0.7, 1.62);
+    group.add(hl);
+  }
+
+  // Taillights
+  for (const side of [-0.5, 0.5]) {
+    const tl = renderer.createToonMesh(_taillightGeo, 0xcc0000, { outlineWidth: 0.01 });
+    tl.position.set(side, 0.7, -1.62);
+    group.add(tl);
+  }
+
+  // Boxy cockpit (armored)
   const cockpit = renderer.createToonMesh(_standardCockpitGeo, acc, { outlineWidth: 0.03 });
   cockpit.position.set(0, 1.2, -0.1);
   group.add(cockpit);
 
-  // Tank treads (left and right)
+  // Windshield (narrow slit, armored)
+  const ws = renderer.createToonMesh(new THREE.BoxGeometry(1.0, 0.25, 0.06), 0x88aacc, { outlineWidth: 0.01 });
+  ws.rotation.x = -0.15;
+  ws.position.set(0, 1.38, 0.35);
+  group.add(ws);
+
+  // Dashboard
+  const dash = renderer.createToonMesh(_dashboardGeo, 0x222222, { outlineWidth: 0.01 });
+  dash.position.set(0, 1.1, 0.2);
+  group.add(dash);
+  const stWheel = renderer.createToonMesh(_steeringWheelGeo, 0x222222, { outlineWidth: 0.01 });
+  stWheel.rotation.x = -0.4;
+  stWheel.position.set(0, 1.22, 0.1);
+  group.add(stWheel);
+
+  // Seat
+  const seat = renderer.createToonMesh(_seatGeo, 0x222222, { outlineWidth: 0.01 });
+  seat.position.set(0, 1.0, -0.35);
+  group.add(seat);
+  const seatBack = renderer.createToonMesh(_seatBackGeo, 0x222222, { outlineWidth: 0.01 });
+  seatBack.position.set(0, 1.25, -0.52);
+  group.add(seatBack);
+
+  // Tank treads (left and right) with tread segments
   for (const side of [-1.2, 1.2]) {
     const track = renderer.createToonMesh(_trackWheelGeo, 0x222222, { outlineWidth: 0.02 });
     track.position.set(side, 0.3, 0);
     group.add(track);
-    // Tread detail: small cylinders as rollers
+    // Track guard (fender over tread)
+    const guard = renderer.createToonMesh(_trackGuardGeo, col, { outlineWidth: 0.02 });
+    guard.position.set(side, 0.53, 0);
+    group.add(guard);
+    // Tread segments on top
+    for (let z = -1.0; z <= 1.0; z += 0.3) {
+      const seg = renderer.createToonMesh(_treadSegGeo, 0x333333, { outlineWidth: 0 });
+      seg.position.set(side, 0.47, z);
+      group.add(seg);
+    }
+    // Rollers
     for (let z = -0.9; z <= 0.9; z += 0.6) {
       const roller = renderer.createToonMesh(_wheelGeo, 0x333333, { outlineWidth: 0.01 });
       roller.rotation.z = Math.PI / 2;
       roller.position.set(side, 0.3, z);
       group.add(roller);
     }
+    // Drive sprocket (front and rear of track)
+    for (const tz of [-1.15, 1.15]) {
+      const sprocket = renderer.createToonMesh(_hubCapGeo, 0x555555, { outlineWidth: 0.01 });
+      sprocket.rotation.z = Math.PI / 2;
+      sprocket.position.set(side, 0.3, tz);
+      group.add(sprocket);
+    }
   }
 
-  // Bumper
+  // Front bumper (heavy, armored)
   const bumper = renderer.createToonMesh(_bumperGeo, 0x444444, { outlineWidth: 0.02 });
   bumper.position.set(0, 0.35, 1.65);
   group.add(bumper);
+  // Rear bumper
+  const rBumper = renderer.createToonMesh(_rearBumperGeo, 0x444444, { outlineWidth: 0.01 });
+  rBumper.position.set(0, 0.35, -1.62);
+  group.add(rBumper);
 
-  // Dual exhaust
+  // Turret ring on top (decorative)
+  const turret = renderer.createToonMesh(_turretRingGeo, 0x555555, { outlineWidth: 0.01 });
+  turret.position.set(0, 1.46, -0.1);
+  group.add(turret);
+
+  // Dual exhaust (thick, industrial)
   for (const side of [-0.4, 0.4]) {
     const exhaust = renderer.createToonMesh(_exhaustGeo, 0x333333, { outlineWidth: 0.01 });
     exhaust.rotation.x = -Math.PI / 3;
@@ -565,10 +926,30 @@ function buildTrackedKart(renderer, col, acc, weight) {
     group.add(exhaust);
   }
 
-  // Engine block on top
+  // Engine block on top with ribs and pipes
   const engine = renderer.createToonMesh(_engineBlockGeo, 0x444444, { outlineWidth: 0.02 });
   engine.position.set(0, 1.25, -1.0);
   group.add(engine);
+  for (let i = -1; i <= 1; i++) {
+    const rib = renderer.createToonMesh(_engineRibGeo, 0x555555, { outlineWidth: 0 });
+    rib.position.set(0, 1.46, -1.0 + i * 0.15);
+    group.add(rib);
+  }
+  for (const side of [-0.4, 0.4]) {
+    const pipe = renderer.createToonMesh(_enginePipeGeo, 0x666666, { outlineWidth: 0.01 });
+    pipe.rotation.z = Math.PI / 2;
+    pipe.position.set(side, 1.35, -0.7);
+    group.add(pipe);
+  }
+
+  // Side vents (industrial)
+  for (const side of [-1.21, 1.21]) {
+    for (let i = 0; i < 3; i++) {
+      const vent = renderer.createToonMesh(_sideVentGeo, 0x111111, { outlineWidth: 0 });
+      vent.position.set(side, 0.65, -0.3 + i * 0.3);
+      group.add(vent);
+    }
+  }
 
   group.castShadow = true;
   return group;
@@ -577,30 +958,129 @@ function buildTrackedKart(renderer, col, acc, weight) {
 function buildHybridKart(renderer, col, acc) {
   const group = new THREE.Group();
 
+  // Floor pan
+  const floor = renderer.createToonMesh(_floorPanGeo, 0x1a1a1a, { outlineWidth: 0.01 });
+  floor.position.y = 0.22;
+  group.add(floor);
+
   // Rounded-ish body (slightly wide)
   const body = renderer.createToonMesh(_wideBodyGeo, col, { outlineWidth: 0.04 });
   body.position.y = 0.5;
   group.add(body);
+
+  // Panel lines
+  for (const side of [-0.5, 0.5]) {
+    const line = renderer.createToonMesh(_panelLineGeo, 0x111111, { outlineWidth: 0 });
+    line.position.set(side, 0.76, 0);
+    group.add(line);
+  }
+
+  // Front grille (sporty)
+  const grille = renderer.createToonMesh(_grilleGeo, 0x111111, { outlineWidth: 0.02 });
+  grille.position.set(0, 0.4, 1.41);
+  group.add(grille);
+
+  // Headlights
+  for (const side of [-0.5, 0.5]) {
+    const hl = renderer.createToonMesh(_headlightGeo, 0xffffff, { outlineWidth: 0.01 });
+    hl.position.set(side, 0.55, 1.42);
+    group.add(hl);
+  }
+
+  // Taillights (split between traditional and energy-style)
+  for (const side of [-0.4, 0.4]) {
+    const tl = renderer.createToonMesh(_taillightGeo, 0xcc3300, { outlineWidth: 0.01 });
+    tl.position.set(side, 0.55, -1.42);
+    group.add(tl);
+  }
+  // Center energy brake light
+  const brakeLt = renderer.createToonMesh(_brakeLightGeo, 0x00aaff, { outlineWidth: 0.01 });
+  brakeLt.position.set(0, 0.76, -1.42);
+  group.add(brakeLt);
 
   // Dome cockpit
   const dome = renderer.createToonMesh(_domeGeo, acc, { outlineWidth: 0.03 });
   dome.position.set(0, 1.0, -0.1);
   group.add(dome);
 
-  // Front: normal wheels, back: hover pads
+  // Windshield
+  const ws = renderer.createToonMesh(_sportWindshieldGeo, 0x88bbdd, { outlineWidth: 0.01 });
+  ws.rotation.x = -0.3;
+  ws.position.set(0, 1.05, 0.35);
+  group.add(ws);
+
+  // Side mirrors
+  for (const side of [-0.6, 0.6]) {
+    const arm = renderer.createToonMesh(_mirrorArmGeo, 0x333333, { outlineWidth: 0 });
+    arm.position.set(side * 1.4, 0.8, 0.3);
+    group.add(arm);
+    const mirror = renderer.createToonMesh(_mirrorGeo, 0x88bbdd, { outlineWidth: 0.01 });
+    mirror.position.set(side * 1.55, 0.8, 0.3);
+    group.add(mirror);
+  }
+
+  // Dashboard
+  const dash = renderer.createToonMesh(_dashboardGeo, 0x222222, { outlineWidth: 0.01 });
+  dash.position.set(0, 0.85, 0.2);
+  group.add(dash);
+  const stWheel = renderer.createToonMesh(_steeringWheelGeo, 0x222222, { outlineWidth: 0.01 });
+  stWheel.rotation.x = -0.5;
+  stWheel.position.set(0, 0.97, 0.1);
+  group.add(stWheel);
+  // Gauges
+  for (const gx of [-0.15, 0.15]) {
+    const gauge = renderer.createToonMesh(_gaugeGeo, 0x115533, { outlineWidth: 0 });
+    gauge.rotation.x = Math.PI / 2;
+    gauge.position.set(gx, 0.93, 0.35);
+    group.add(gauge);
+  }
+
+  // Seat
+  const seat = renderer.createToonMesh(_seatGeo, 0x333333, { outlineWidth: 0.01 });
+  seat.position.set(0, 0.75, -0.35);
+  group.add(seat);
+  const seatBack = renderer.createToonMesh(_seatBackGeo, 0x333333, { outlineWidth: 0.01 });
+  seatBack.position.set(0, 1.0, -0.52);
+  group.add(seatBack);
+
+  // Front: normal wheels with rims
   const frontWheels = [[-0.9, 0.35, 1.0], [0.9, 0.35, 1.0]];
   for (const [x, y, z] of frontWheels) {
     const wheel = renderer.createToonMesh(_wheelGeo, 0x222222, { outlineWidth: 0.02 });
     wheel.rotation.z = Math.PI / 2;
     wheel.position.set(x, y, z);
     group.add(wheel);
+    const rim = renderer.createToonMesh(_rimGeo, 0x999999, { outlineWidth: 0.01 });
+    rim.rotation.z = Math.PI / 2;
+    rim.position.set(x > 0 ? x + 0.02 : x - 0.02, y, z);
+    group.add(rim);
+    const hub = renderer.createToonMesh(_hubCapGeo, acc, { outlineWidth: 0 });
+    hub.rotation.z = Math.PI / 2;
+    hub.position.set(x > 0 ? x + 0.13 : x - 0.13, y, z);
+    group.add(hub);
+    // Wheel arch
+    const arch = renderer.createToonMesh(_wheelArchGeo, col, { outlineWidth: 0.01 });
+    arch.rotation.z = x > 0 ? 0 : Math.PI;
+    arch.rotation.y = Math.PI / 2;
+    arch.position.set(x > 0 ? x - 0.15 : x + 0.15, y + 0.1, z);
+    group.add(arch);
   }
+
+  // Rear: hover pads with glow
   const rearPads = [[-0.8, 0.3, -1.0], [0.8, 0.3, -1.0]];
   for (const [x, y, z] of rearPads) {
     const pad = renderer.createToonMesh(_hoverPadGeo, acc, { outlineWidth: 0.02 });
     pad.position.set(x, y, z);
     group.add(pad);
+    const glow = renderer.createToonMesh(_hoverGlowGeo, 0x00ccff, { outlineWidth: 0 });
+    glow.position.set(x, y - 0.08, z);
+    group.add(glow);
   }
+
+  // Rear energy ring
+  const eRing = renderer.createToonMesh(_energyRingGeo, 0x00aaff, { outlineWidth: 0.01 });
+  eRing.position.set(0, 0.35, -0.8);
+  group.add(eRing);
 
   // Spoiler
   const spoiler = renderer.createToonMesh(_spoilerGeo, acc, { outlineWidth: 0.02 });
@@ -612,11 +1092,25 @@ function buildHybridKart(renderer, col, acc) {
     group.add(post);
   }
 
-  // Side fins
+  // Side fins with accent stripes
   for (const side of [-1.1, 1.1]) {
     const fin = renderer.createToonMesh(_finGeo, acc, { outlineWidth: 0.01 });
     fin.position.set(side, 0.7, -0.5);
     group.add(fin);
+    const stripe = renderer.createToonMesh(
+      new THREE.BoxGeometry(0.07, 0.08, 0.6), 0x00aaff, { outlineWidth: 0 }
+    );
+    stripe.position.set(side, 0.9, -0.5);
+    group.add(stripe);
+  }
+
+  // Side vents
+  for (const side of [-1.11, 1.11]) {
+    for (let i = 0; i < 2; i++) {
+      const vent = renderer.createToonMesh(_sideVentGeo, 0x111111, { outlineWidth: 0 });
+      vent.position.set(side, 0.5, 0.2 + i * 0.3);
+      group.add(vent);
+    }
   }
 
   // Nose
@@ -624,6 +1118,17 @@ function buildHybridKart(renderer, col, acc) {
   nose.rotation.x = Math.PI / 2;
   nose.position.set(0, 0.5, 1.6);
   group.add(nose);
+
+  // Exhaust (single, offset)
+  const exhaust = renderer.createToonMesh(_smallExhaustGeo, 0x333333, { outlineWidth: 0.01 });
+  exhaust.rotation.x = -Math.PI / 5;
+  exhaust.position.set(0.4, 0.6, -1.5);
+  group.add(exhaust);
+
+  // Air intake scoop
+  const scoop = renderer.createToonMesh(_scoopGeo, acc, { outlineWidth: 0.01 });
+  scoop.position.set(0, 0.95, 0.6);
+  group.add(scoop);
 
   group.castShadow = true;
   return group;
@@ -747,6 +1252,9 @@ function buildTrack(renderer, circuit) {
   if (circuit.palette?.sky) {
     renderer.renderer.setClearColor(circuit.palette.sky.zenith);
   }
+
+  // Sky dome
+  buildSkyDome(renderer, circuit, shaderUniforms);
 }
 
 // --- Track-side lighting ---
@@ -841,16 +1349,149 @@ function buildTrackLights(renderer, circuit, waypoints, trackWidth) {
   }
 }
 
+// --- Sky Dome ---
+
+function buildSkyDome(renderer, circuit, shaderUniforms) {
+  const sky = circuit.palette?.sky || { horizon: 0x88aacc, zenith: 0x1a1a2e };
+  const theme = (circuit.theme || '').toLowerCase();
+
+  const skyUniforms = {
+    time: { value: 0 },
+    zenithColor: { value: new THREE.Color(sky.zenith) },
+    horizonColor: { value: new THREE.Color(sky.horizon) },
+    biome: { value: theme.includes('neon') ? 3 : theme.includes('volcan') ? 1 : theme.includes('ocean') ? 2 : theme.includes('ruin') ? 4 : 0 }
+  };
+  shaderUniforms.push(skyUniforms);
+
+  const skyGeo = new THREE.SphereGeometry(800, 32, 20);
+  const skyMat = new THREE.ShaderMaterial({
+    uniforms: skyUniforms,
+    vertexShader: `
+      varying vec3 vWorldPos;
+      void main() {
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 zenithColor;
+      uniform vec3 horizonColor;
+      uniform float time;
+      uniform int biome;
+
+      varying vec3 vWorldPos;
+
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p); vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1,0)), f.x), mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0; float a = 0.5;
+        for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.0; a *= 0.5; }
+        return v;
+      }
+
+      void main() {
+        vec3 dir = normalize(vWorldPos);
+        float h = dir.y * 0.5 + 0.5; // 0=horizon, 1=zenith
+
+        // Gradient
+        vec3 col = mix(horizonColor, zenithColor, smoothstep(0.0, 0.7, h));
+
+        // Sun/moon glow
+        vec3 sunDir = normalize(vec3(0.4, 0.6, 0.3));
+        float sunDot = max(dot(dir, sunDir), 0.0);
+
+        if (biome == 1) {
+          // Volcano: fiery sky, slow drifting smoke
+          col += vec3(0.8, 0.2, 0.0) * pow(sunDot, 8.0) * 0.6;
+          // Lava glow from below (horizon tint)
+          col += vec3(0.6, 0.15, 0.0) * smoothstep(0.3, 0.0, h) * 0.4;
+          // Slow smoke clouds (no flicker — fbm with very slow time)
+          float smoke = fbm(dir.xz * 3.0 + time * 0.008);
+          col = mix(col, vec3(0.15, 0.08, 0.05), smoke * 0.5 * smoothstep(0.3, 0.8, h));
+          // Subtle heat haze (smooth, no step)
+          float haze = fbm(dir.xz * 6.0 + time * 0.015);
+          col += vec3(0.3, 0.08, 0.0) * haze * 0.15 * smoothstep(0.1, 0.5, h);
+        } else if (biome == 2) {
+          // Ocean: underwater caustic light rays
+          float caustic = fbm(dir.xz * 5.0 + time * 0.05);
+          col += vec3(0.0, 0.3, 0.5) * caustic * 0.3 * smoothstep(0.5, 1.0, h);
+          // Light rays from above
+          float ray = pow(max(dir.y, 0.0), 3.0);
+          col += vec3(0.1, 0.25, 0.4) * ray * 0.5;
+          // Floating particles
+          float particles = step(0.985, hash(dir.xz * 80.0 + time * 0.03));
+          col += vec3(0.2, 0.6, 0.8) * particles;
+        } else if (biome == 3) {
+          // Neon: dark sky with neon aurora bands
+          float aurora = sin(dir.x * 4.0 + time * 0.3) * cos(dir.z * 3.0 + time * 0.2);
+          aurora = smoothstep(0.3, 0.8, aurora * 0.5 + 0.5);
+          vec3 auroraCol = mix(vec3(0.0, 1.0, 0.8), vec3(1.0, 0.0, 1.0), sin(dir.x * 2.0 + time * 0.1) * 0.5 + 0.5);
+          col += auroraCol * aurora * 0.2 * smoothstep(0.4, 0.9, h);
+          // Stars
+          float star = step(0.992, hash(floor(dir.xz * 200.0)));
+          float twinkle = sin(time * 3.0 + hash(floor(dir.xz * 200.0)) * 20.0) * 0.5 + 0.5;
+          col += vec3(1.0) * star * twinkle * 0.6;
+        } else if (biome == 4) {
+          // Ruins: eerie purple, dimensional cracks
+          col += vec3(0.4, 0.0, 0.6) * pow(sunDot, 4.0) * 0.4;
+          float crack = step(0.93, fbm(dir.xz * 8.0 + time * 0.01));
+          col += vec3(0.5, 0.0, 1.0) * crack * 0.6;
+          // Floating runes
+          float rune = step(0.99, hash(floor(dir.xz * 100.0) + floor(time * 0.5)));
+          col += vec3(0.8, 0.4, 1.0) * rune * 0.4;
+        } else {
+          // Forest: sunny sky with fluffy clouds
+          col += vec3(1.0, 0.9, 0.7) * pow(sunDot, 32.0) * 0.8; // sun
+          col += vec3(0.8, 0.7, 0.5) * pow(sunDot, 4.0) * 0.2;  // halo
+          // Clouds
+          vec2 cloudUV = dir.xz / max(dir.y, 0.01) * 0.15;
+          float cloud = fbm(cloudUV + time * 0.008);
+          cloud = smoothstep(0.4, 0.7, cloud);
+          col = mix(col, vec3(1.0, 0.98, 0.95), cloud * 0.7 * smoothstep(0.2, 0.6, h));
+        }
+
+        // Horizon haze
+        col = mix(col, horizonColor * 1.2, smoothstep(0.15, 0.0, h) * 0.5);
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+
+  const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+  renderer.scene.add(skyMesh);
+}
+
 // Shared scenery geometries
 const _treeGeo = new THREE.ConeGeometry(2, 6, 6);
+const _treeBigGeo = new THREE.ConeGeometry(3, 9, 7);
+const _treeBushGeo = new THREE.SphereGeometry(2, 6, 5);
 const _trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 2, 6);
+const _trunkTallGeo = new THREE.CylinderGeometry(0.25, 0.6, 4, 6);
 const _rockGeo = new THREE.DodecahedronGeometry(1.5, 0);
+const _rockSmallGeo = new THREE.DodecahedronGeometry(0.6, 0);
 const _pillarGeo = new THREE.CylinderGeometry(0.8, 1.0, 8, 6);
 const _buildingGeo = new THREE.BoxGeometry(4, 8, 4);
+const _buildingTallGeo = new THREE.BoxGeometry(3, 16, 3);
 const _crystalGeo = new THREE.OctahedronGeometry(2, 0);
+const _crystalSmallGeo = new THREE.OctahedronGeometry(0.8, 0);
 const _coralGeo = new THREE.CylinderGeometry(0.2, 0.8, 4, 5);
+const _coralBranchGeo = new THREE.CylinderGeometry(0.1, 0.3, 2.5, 4);
+const _seaweedGeo = new THREE.CylinderGeometry(0.05, 0.15, 3, 4);
 const _mushroomCapGeo = new THREE.SphereGeometry(1.5, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
 const _mushroomStemGeo = new THREE.CylinderGeometry(0.3, 0.4, 2, 6);
+const _archGeo = new THREE.TorusGeometry(3, 0.4, 6, 12, Math.PI);
+const _fencePostGeo = new THREE.CylinderGeometry(0.08, 0.1, 1.5, 5);
+const _bannerGeo = new THREE.PlaneGeometry(1.5, 0.8);
+const _crateStackGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+const _signGeo = new THREE.BoxGeometry(1.5, 1.0, 0.1);
+const _hologramGeo = new THREE.IcosahedronGeometry(1.5, 0);
 
 function buildScenery(renderer, circuit, waypoints, trackWidth) {
   const theme = circuit.theme?.toLowerCase() || '';
@@ -899,103 +1540,261 @@ function placeSceneryProp(renderer, theme, palette, x, y, z, rng) {
   const rotY = rng() * Math.PI * 2;
 
   if (theme.includes('forest') || theme.includes('crystal')) {
-    // Trees, crystals, mushrooms
     const r = rng();
-    if (r < 0.35) {
-      // Tree
-      const trunk = renderer.createToonMesh(_trunkGeo, 0x5a3a1a, { outlineWidth: 0.02 });
-      trunk.position.set(x, y + 1, z);
+    if (r < 0.22) {
+      // Tall tree with layered foliage
+      const trunk = renderer.createToonMesh(_trunkTallGeo, 0x5a3a1a, { outlineWidth: 0.02 });
+      trunk.position.set(x, y + 2 * scale, z);
       trunk.scale.setScalar(scale);
       renderer.scene.add(trunk);
-      const foliage = renderer.createToonMesh(_treeGeo, 0x226622, { outlineWidth: 0.03 });
-      foliage.position.set(x, y + 4 * scale, z);
-      foliage.scale.setScalar(scale);
-      renderer.scene.add(foliage);
-    } else if (r < 0.6) {
-      // Crystal
-      const crystal = renderer.createToonMesh(_crystalGeo, palette.crystal || palette.accent || 0x88ddff, { outlineWidth: 0.03 });
-      crystal.position.set(x, y + 2 * scale, z);
-      crystal.scale.set(scale * 0.6, scale * 1.5, scale * 0.6);
-      crystal.rotation.y = rotY;
-      renderer.scene.add(crystal);
-    } else if (r < 0.8) {
-      // Mushroom
-      const stem = renderer.createToonMesh(_mushroomStemGeo, 0xccbb99, { outlineWidth: 0.02 });
-      stem.position.set(x, y + 1 * scale, z);
-      stem.scale.setScalar(scale);
-      renderer.scene.add(stem);
-      const cap = renderer.createToonMesh(_mushroomCapGeo, 0xcc3344, { outlineWidth: 0.02 });
-      cap.position.set(x, y + 2.2 * scale, z);
-      cap.scale.setScalar(scale * 1.2);
-      renderer.scene.add(cap);
+      for (let i = 0; i < 3; i++) {
+        const s = scale * (1.2 - i * 0.25);
+        const foliage = renderer.createToonMesh(_treeGeo, 0x226622 + i * 0x001100, { outlineWidth: 0.03 });
+        foliage.position.set(x, y + (4.5 + i * 2) * scale, z);
+        foliage.scale.setScalar(s);
+        renderer.scene.add(foliage);
+      }
+    } else if (r < 0.38) {
+      // Round bush tree
+      const trunk = renderer.createToonMesh(_trunkGeo, 0x5a3a1a, { outlineWidth: 0.02 });
+      trunk.position.set(x, y + 1, z);
+      trunk.scale.setScalar(scale * 0.8);
+      renderer.scene.add(trunk);
+      const bush = renderer.createToonMesh(_treeBushGeo, 0x2a7722, { outlineWidth: 0.03 });
+      bush.position.set(x, y + 3.5 * scale, z);
+      bush.scale.setScalar(scale);
+      renderer.scene.add(bush);
+    } else if (r < 0.55) {
+      // Crystal cluster
+      const crystalCol = palette.crystal || palette.accent || 0x88ddff;
+      for (let i = 0; i < 2 + Math.floor(rng() * 3); i++) {
+        const geo = i === 0 ? _crystalGeo : _crystalSmallGeo;
+        const crystal = renderer.createToonMesh(geo, crystalCol, { outlineWidth: 0.03 });
+        const ox = (rng() - 0.5) * 2;
+        const oz = (rng() - 0.5) * 2;
+        const s = i === 0 ? scale : scale * (0.4 + rng() * 0.4);
+        crystal.position.set(x + ox, y + 1.5 * s, z + oz);
+        crystal.scale.set(s * 0.6, s * 1.5, s * 0.6);
+        crystal.rotation.set(rng() * 0.3, rotY + i, rng() * 0.3);
+        renderer.scene.add(crystal);
+      }
+    } else if (r < 0.7) {
+      // Mushroom cluster
+      for (let i = 0; i < 1 + Math.floor(rng() * 3); i++) {
+        const ms = scale * (0.5 + rng() * 0.6);
+        const ox = (rng() - 0.5) * 2.5;
+        const oz = (rng() - 0.5) * 2.5;
+        const stem = renderer.createToonMesh(_mushroomStemGeo, 0xccbb99, { outlineWidth: 0.02 });
+        stem.position.set(x + ox, y + 1 * ms, z + oz);
+        stem.scale.setScalar(ms);
+        renderer.scene.add(stem);
+        const cap = renderer.createToonMesh(_mushroomCapGeo, rng() > 0.5 ? 0xcc3344 : 0xdd8844, { outlineWidth: 0.02 });
+        cap.position.set(x + ox, y + 2.2 * ms, z + oz);
+        cap.scale.setScalar(ms * 1.2);
+        renderer.scene.add(cap);
+      }
+    } else if (r < 0.82) {
+      // Fallen log
+      const log = renderer.createToonMesh(_trunkTallGeo, 0x5a3a1a, { outlineWidth: 0.02 });
+      log.position.set(x, y + 0.4, z);
+      log.rotation.z = Math.PI / 2;
+      log.rotation.y = rotY;
+      log.scale.set(scale * 0.8, scale, scale * 0.8);
+      renderer.scene.add(log);
     } else {
-      // Rock
-      const rock = renderer.createToonMesh(_rockGeo, palette.walls || 0x555555, { outlineWidth: 0.02 });
-      rock.position.set(x, y + 0.5 * scale, z);
-      rock.scale.set(scale, scale * 0.7, scale);
-      rock.rotation.set(rng(), rotY, rng() * 0.3);
-      renderer.scene.add(rock);
+      // Rock cluster
+      for (let i = 0; i < 2 + Math.floor(rng() * 2); i++) {
+        const geo = i === 0 ? _rockGeo : _rockSmallGeo;
+        const rock = renderer.createToonMesh(geo, palette.walls || 0x555555, { outlineWidth: 0.02 });
+        const ox = (rng() - 0.5) * 3;
+        const oz = (rng() - 0.5) * 3;
+        const rs = i === 0 ? scale : scale * (0.3 + rng() * 0.4);
+        rock.position.set(x + ox, y + 0.4 * rs, z + oz);
+        rock.scale.set(rs, rs * 0.7, rs);
+        rock.rotation.set(rng() * 0.3, rotY, rng() * 0.2);
+        renderer.scene.add(rock);
+      }
     }
   } else if (theme.includes('neon') || theme.includes('cyber')) {
-    // Buildings, neon pillars
     const r = rng();
-    if (r < 0.5) {
-      const h = 4 + rng() * 16;
-      const building = renderer.createToonMesh(_buildingGeo, palette.walls || 0x333344, { outlineWidth: 0.03 });
+    if (r < 0.3) {
+      // Tall building with roof antenna
+      const h = 8 + rng() * 20;
+      const building = renderer.createToonMesh(_buildingTallGeo, palette.walls || 0x333344, { outlineWidth: 0.03 });
       building.position.set(x, y + h / 2, z);
-      building.scale.set(1 + rng(), h / 8, 1 + rng());
+      building.scale.set(1 + rng(), h / 16, 1 + rng());
       renderer.scene.add(building);
-    } else {
+      const antenna = renderer.createToonMesh(_antennaGeo, 0x888888, { outlineWidth: 0.01 });
+      antenna.position.set(x, y + h + 0.5, z);
+      antenna.scale.set(1, 2, 1);
+      renderer.scene.add(antenna);
+      const tip = renderer.createToonMesh(_antennaTipGeo, palette.neon || 0xff00ff, { outlineWidth: 0.01 });
+      tip.position.set(x, y + h + 1.3, z);
+      tip.scale.setScalar(2);
+      renderer.scene.add(tip);
+    } else if (r < 0.5) {
+      // Short building cluster
+      for (let i = 0; i < 2 + Math.floor(rng() * 2); i++) {
+        const h = 4 + rng() * 10;
+        const ox = (rng() - 0.5) * 6;
+        const oz = (rng() - 0.5) * 6;
+        const building = renderer.createToonMesh(_buildingGeo, palette.walls || 0x333344, { outlineWidth: 0.03 });
+        building.position.set(x + ox, y + h / 2, z + oz);
+        building.scale.set(0.8 + rng() * 0.6, h / 8, 0.8 + rng() * 0.6);
+        renderer.scene.add(building);
+      }
+    } else if (r < 0.7) {
+      // Neon pillar
       const pillar = renderer.createToonMesh(_pillarGeo, palette.neon || palette.accent || 0x00ffcc, { outlineWidth: 0.03 });
       pillar.position.set(x, y + 4 * scale, z);
       pillar.scale.setScalar(scale * 0.6);
       renderer.scene.add(pillar);
+    } else if (r < 0.85) {
+      // Hologram
+      const holo = renderer.createToonMesh(_hologramGeo, palette.neon || 0x00ffcc, { outlineWidth: 0.02 });
+      holo.position.set(x, y + 4 + rng() * 3, z);
+      holo.scale.setScalar(scale * 0.8);
+      holo.rotation.set(rng(), rotY, rng());
+      if (holo.children[0]?.material) {
+        holo.children[0].material.transparent = true;
+        holo.children[0].material.opacity = 0.4;
+      }
+      renderer.scene.add(holo);
+    } else {
+      // Neon sign
+      const sign = renderer.createToonMesh(_signGeo, palette.neon || 0xff00ff, { outlineWidth: 0.02 });
+      sign.position.set(x, y + 3 + rng() * 2, z);
+      sign.rotation.y = rotY;
+      sign.scale.set(scale * 1.5, scale, 1);
+      renderer.scene.add(sign);
     }
   } else if (theme.includes('volcan') || theme.includes('lava')) {
-    // Rocks, lava pillars
     const r = rng();
-    if (r < 0.6) {
+    if (r < 0.35) {
+      // Rock cluster with small debris
       const rock = renderer.createToonMesh(_rockGeo, 0x443322, { outlineWidth: 0.02 });
       rock.position.set(x, y + 0.5 * scale, z);
       rock.scale.set(scale * 1.2, scale * 0.8, scale);
       rock.rotation.set(rng() * 0.3, rotY, 0);
       renderer.scene.add(rock);
-    } else {
+      for (let i = 0; i < 3; i++) {
+        const sm = renderer.createToonMesh(_rockSmallGeo, 0x332211, { outlineWidth: 0.01 });
+        sm.position.set(x + (rng() - 0.5) * 4, y + 0.2, z + (rng() - 0.5) * 4);
+        sm.scale.setScalar(0.4 + rng() * 0.6);
+        sm.rotation.set(rng(), rng(), rng());
+        renderer.scene.add(sm);
+      }
+    } else if (r < 0.6) {
+      // Lava pillar
       const pillar = renderer.createToonMesh(_pillarGeo, palette.lava || 0xff3300, { outlineWidth: 0.03 });
       pillar.position.set(x, y + 3 * scale, z);
       pillar.scale.set(scale * 0.5, scale * 0.8, scale * 0.5);
       renderer.scene.add(pillar);
+    } else if (r < 0.8) {
+      // Volcanic arch
+      const arch = renderer.createToonMesh(_archGeo, 0x553322, { outlineWidth: 0.03 });
+      arch.position.set(x, y, z);
+      arch.rotation.y = rotY;
+      arch.scale.setScalar(scale);
+      renderer.scene.add(arch);
+    } else {
+      // Obsidian spike
+      const spike = renderer.createToonMesh(_crystalGeo, 0x111111, { outlineWidth: 0.03 });
+      spike.position.set(x, y + 2 * scale, z);
+      spike.scale.set(scale * 0.4, scale * 2, scale * 0.4);
+      renderer.scene.add(spike);
     }
   } else if (theme.includes('ocean') || theme.includes('reef') || theme.includes('water')) {
-    // Coral, rocks, bubbles
     const r = rng();
-    if (r < 0.5) {
+    if (r < 0.25) {
+      // Coral cluster with branches
       const coral = renderer.createToonMesh(_coralGeo, palette.accent || 0x00ccff, { outlineWidth: 0.02 });
       coral.position.set(x, y + 2 * scale, z);
       coral.scale.set(scale * 0.8, scale, scale * 0.8);
       renderer.scene.add(coral);
-    } else {
+      for (let i = 0; i < 3; i++) {
+        const branch = renderer.createToonMesh(_coralBranchGeo, rng() > 0.5 ? 0xff6688 : 0xffaa44, { outlineWidth: 0.01 });
+        branch.position.set(x + (rng() - 0.5) * 2, y + 1.5 * scale, z + (rng() - 0.5) * 2);
+        branch.rotation.set(rng() * 0.4, rng() * Math.PI, rng() * 0.4);
+        branch.scale.setScalar(scale * 0.8);
+        renderer.scene.add(branch);
+      }
+    } else if (r < 0.45) {
+      // Seaweed patch
+      for (let i = 0; i < 4 + Math.floor(rng() * 5); i++) {
+        const sw = renderer.createToonMesh(_seaweedGeo, 0x228844 + Math.floor(rng() * 0x002200), { outlineWidth: 0.01 });
+        sw.position.set(x + (rng() - 0.5) * 4, y + 1.5 * scale, z + (rng() - 0.5) * 4);
+        sw.rotation.set(rng() * 0.3, rng() * Math.PI, rng() * 0.3);
+        sw.scale.set(scale * 0.6, scale * (0.6 + rng()), scale * 0.6);
+        renderer.scene.add(sw);
+      }
+    } else if (r < 0.65) {
+      // Sea rock with small corals
       const rock = renderer.createToonMesh(_rockGeo, palette.walls || 0x2a3a4a, { outlineWidth: 0.02 });
       rock.position.set(x, y + 0.5 * scale, z);
       rock.scale.set(scale, scale * 0.6, scale);
       rock.rotation.y = rotY;
       renderer.scene.add(rock);
+      const miniCoral = renderer.createToonMesh(_coralBranchGeo, 0xff4466, { outlineWidth: 0.01 });
+      miniCoral.position.set(x + 0.5, y + scale * 0.8, z);
+      miniCoral.scale.setScalar(scale * 0.5);
+      renderer.scene.add(miniCoral);
+    } else {
+      // Anemone
+      const stem = renderer.createToonMesh(_mushroomStemGeo, 0x44aa88, { outlineWidth: 0.02 });
+      stem.position.set(x, y + 0.8 * scale, z);
+      stem.scale.setScalar(scale * 0.7);
+      renderer.scene.add(stem);
+      const top = renderer.createToonMesh(_mushroomCapGeo, 0xff66aa, { outlineWidth: 0.02 });
+      top.position.set(x, y + 1.8 * scale, z);
+      top.scale.setScalar(scale * 0.6);
+      renderer.scene.add(top);
     }
   } else {
-    // Ruins / generic: pillars, rocks
+    // Ruins / generic
     const r = rng();
-    if (r < 0.4) {
-      const pillar = renderer.createToonMesh(_pillarGeo, palette.walls || 0x3a2a3a, { outlineWidth: 0.03 });
-      pillar.position.set(x, y + 4 * scale, z);
-      pillar.scale.setScalar(scale * 0.7);
-      pillar.rotation.z = rng() * 0.2 - 0.1; // slightly tilted
-      renderer.scene.add(pillar);
+    if (r < 0.25) {
+      // Ruined arch
+      const arch = renderer.createToonMesh(_archGeo, palette.walls || 0x3a2a3a, { outlineWidth: 0.03 });
+      arch.position.set(x, y, z);
+      arch.rotation.y = rotY;
+      arch.rotation.z = rng() * 0.15;
+      arch.scale.setScalar(scale * 0.8);
+      renderer.scene.add(arch);
+    } else if (r < 0.45) {
+      // Broken pillar pair
+      for (let i = 0; i < 2; i++) {
+        const h = 0.4 + rng() * 0.7;
+        const pillar = renderer.createToonMesh(_pillarGeo, palette.walls || 0x3a2a3a, { outlineWidth: 0.03 });
+        pillar.position.set(x + (i - 0.5) * 3, y + 4 * h * scale, z);
+        pillar.scale.set(scale * 0.5, scale * h, scale * 0.5);
+        pillar.rotation.z = (rng() - 0.5) * 0.2;
+        renderer.scene.add(pillar);
+      }
+    } else if (r < 0.65) {
+      // Floating rune stone
+      const rune = renderer.createToonMesh(_crystalGeo, palette.energy || 0x8800ff, { outlineWidth: 0.03 });
+      rune.position.set(x, y + 3 + rng() * 4, z);
+      rune.scale.setScalar(scale * 0.5);
+      rune.rotation.set(rng(), rotY, rng());
+      if (rune.children[0]?.material) {
+        rune.children[0].material.transparent = true;
+        rune.children[0].material.opacity = 0.6;
+      }
+      renderer.scene.add(rune);
     } else {
-      const rock = renderer.createToonMesh(_rockGeo, palette.walls || 0x555555, { outlineWidth: 0.02 });
-      rock.position.set(x, y + 0.5 * scale, z);
-      rock.scale.set(scale, scale * 0.7, scale);
-      rock.rotation.y = rotY;
-      renderer.scene.add(rock);
+      // Rock debris pile
+      for (let i = 0; i < 3 + Math.floor(rng() * 3); i++) {
+        const geo = rng() > 0.5 ? _rockGeo : _rockSmallGeo;
+        const rock = renderer.createToonMesh(geo, palette.walls || 0x555555, { outlineWidth: 0.02 });
+        const ox = (rng() - 0.5) * 4;
+        const oz = (rng() - 0.5) * 4;
+        const rs = (rng() > 0.5 ? 1 : 0.4) * scale;
+        rock.position.set(x + ox, y + 0.3 * rs, z + oz);
+        rock.scale.set(rs, rs * 0.6, rs);
+        rock.rotation.set(rng(), rng(), rng() * 0.3);
+        renderer.scene.add(rock);
+      }
     }
   }
 }
