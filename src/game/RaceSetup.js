@@ -167,6 +167,30 @@ export async function startRace(config) {
   const { init: initPause } = await import('../ui/PauseMenu.js');
   initPause();
 
+  // Crew mode: request pointer lock on click, attach weapon model, show HUD
+  if (isCrewMode) {
+    const canvas = document.getElementById('game-canvas');
+    const _requestLock = () => { inputManager.requestPointerLock(); };
+    canvas?.addEventListener('click', _requestLock);
+
+    // Attach FPS weapon barrel to gunner camera
+    const gunCam = humanCameras[1];
+    const wpnBarrelGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.0, 6);
+    const wpnBarrelMat = new THREE.MeshPhongMaterial({ color: 0x444444 });
+    const wpnBarrel = new THREE.Mesh(wpnBarrelGeo, wpnBarrelMat);
+    wpnBarrel.rotation.x = Math.PI / 2;
+    wpnBarrel.position.set(0.15, -0.25, -0.8);
+    gunCam.add(wpnBarrel);
+    renderer.scene.add(gunCam);
+
+    // Hide the kart-attached turret mesh (we use the FPS weapon model instead)
+    turretController.mesh.visible = false;
+
+    // Gunner HUD — get viewport config for P2
+    const vp = renderer.viewports[1];
+    _createGunnerHUD(vp);
+  }
+
   // Snap cameras to initial position (avoid slow lerp from origin)
   for (let i = 0; i < humanKarts.length; i++) {
     const kart = humanKarts[i];
@@ -204,21 +228,38 @@ export async function startRace(config) {
 
       }
 
-      // Crew mode: driver uses item with P1 input, gunner fires with P2 input
+      // Crew mode: driver uses P1 keyboard, gunner aims with mouse
       if (isCrewMode && turretController) {
         const driverInput = inputManager.getPlayerState(0);
-        const gunnerInput = inputManager.getPlayerState(1);
         if (driverInput.useItem) {
           itemSystem.useItem('player-0');
         }
-        turretController.update(delta, {
-          aimX: gunnerInput.steering,
-          aimY: gunnerInput.throttle - (gunnerInput.brake ? 1 : 0),
-          fire: gunnerInput.useItem
-        });
-        if (gunnerInput.useItem) {
-          itemSystem.useItem('player-0'); // gunner uses shared slot for now
+        // Mouse delta drives gunner camera yaw/pitch (stored on turret)
+        const mouse = inputManager.getMouseState();
+        const mouseDelta = inputManager.consumeMouseDelta();
+        if (mouse.locked) {
+          const sens = 0.003;
+          turretController.yaw = Math.max(-turretController.maxYaw,
+            Math.min(turretController.maxYaw, turretController.yaw - mouseDelta.dx * sens));
+          turretController.pitch = Math.max(-turretController.maxPitch,
+            Math.min(turretController.maxPitch, turretController.pitch - mouseDelta.dy * sens));
         }
+        // Sync turret mesh to yaw/pitch
+        turretController.mesh.rotation.y = turretController.yaw;
+        turretController.mesh.children.forEach(child => {
+          if (child.geometry?.type === 'CylinderGeometry') {
+            child.rotation.x = Math.PI / 2 + turretController.pitch;
+          }
+        });
+        // Fire on click (only when pointer is locked), rate limited by kart weight
+        turretController._fireCooldown = (turretController._fireCooldown || 0) - delta;
+        if (mouse.locked && mouse.leftButton && !turretController._wasFiring && turretController._fireCooldown <= 0) {
+          _fireTurret(turretController, itemSystem);
+          // Heavy karts: slower fire rate, light karts: faster
+          const weight = turretController.kart.weightFactor || 3;
+          turretController._fireCooldown = 0.3 + weight * 0.15;
+        }
+        turretController._wasFiring = mouse.leftButton;
       }
 
       // AI
@@ -283,11 +324,18 @@ export async function startRace(config) {
     if (isCrewMode && turretController) {
       const driverInput = inputManager.getPlayerState(0);
       updateCockpitCamera(humanCameras[0], humanKarts[0], driverInput);
-      // Gunner: FPS cam at turret
+      // Gunner camera: positioned at turret, looking along turret direction
+      const kart = humanKarts[0];
+      const gunCam = humanCameras[1];
       const turretPos = turretController.getWorldPosition();
-      const turretDir = turretController.getWorldDirection();
-      humanCameras[1].position.copy(turretPos);
-      humanCameras[1].lookAt(turretPos.clone().add(turretDir));
+      gunCam.position.copy(turretPos);
+      // Camera rotation: kart yaw + turret yaw, turret pitch
+      gunCam.rotation.order = 'YXZ';
+      gunCam.rotation.set(turretController.pitch, kart.yaw + turretController.yaw + Math.PI, 0);
+      gunCam.fov = 70;
+      gunCam.updateProjectionMatrix();
+      // Update gunner HUD
+      _updateGunnerHUD(turretController, itemSystem.heldItems.get('player-0'));
     } else {
       for (let i = 0; i < humanKarts.length; i++) {
         const pInput = inputManager.getPlayerState(i);
@@ -2436,6 +2484,124 @@ function mulberry32(seed) {
   };
 }
 
+// --- Turret firing ---
+
+function _fireTurret(turretController, itemSystem) {
+  const pos = turretController.getWorldPosition();
+  const dir = turretController.getWorldDirection();
+  itemSystem.fireTurretShot(pos, dir, turretController.kart);
+}
+
+// --- Gunner HUD for crew mode ---
+
+let _gunnerHUD = null;
+
+function _createGunnerHUD(vp) {
+  _removeGunnerHUD();
+  const overlay = document.getElementById('ui-overlay');
+  if (!overlay) return;
+
+  // vp = { x, y, w, h } in 0-1 GL coords (y=0 is bottom)
+  // Convert to CSS percentages (top=0 is top of screen)
+  const vpX = vp?.x ?? 0.5;
+  const vpY = vp?.y ?? 0;
+  const vpW = vp?.w ?? 0.5;
+  const vpH = vp?.h ?? 1;
+  // Center of viewport in screen-space percentages
+  const centerX = (vpX + vpW / 2) * 100;
+  const centerY = (1 - vpY - vpH / 2) * 100;
+
+  // Absolute screen-space center of the P2 viewport
+  const screenCenterX = centerX;
+  const screenCenterY = centerY;
+
+  const hud = document.createElement('div');
+  hud.id = 'gunner-hud';
+  hud.style.cssText = `
+    position:absolute;left:0;top:0;width:100%;height:100%;
+    pointer-events:none;font-family:'Rajdhani',sans-serif;color:white;
+  `;
+  hud.innerHTML = `
+    <!-- Crosshair (absolute screen center of P2 viewport) -->
+    <div id="gunner-crosshair" style="
+      position:absolute;top:${screenCenterY}%;left:${screenCenterX}%;transform:translate(-50%,-50%);
+      width:40px;height:40px;
+    ">
+      <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:2px;height:12px;background:#ff4400;"></div>
+      <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:2px;height:12px;background:#ff4400;"></div>
+      <div style="position:absolute;left:0;top:50%;transform:translateY(-50%);width:12px;height:2px;background:#ff4400;"></div>
+      <div style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:12px;height:2px;background:#ff4400;"></div>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:4px;height:4px;border-radius:50%;border:1px solid #ff4400;"></div>
+    </div>
+    <!-- Turret angle indicator -->
+    <div id="gunner-angle" style="
+      position:absolute;top:${(1 - vpY) * 100 - 3}%;left:${screenCenterX}%;transform:translateX(-50%);
+      font-size:14px;color:#aaa;letter-spacing:1px;
+    ">TURRET 0°</div>
+    <!-- Click to lock hint -->
+    <div id="gunner-lock-hint" style="
+      position:absolute;top:${screenCenterY + 3}%;left:${screenCenterX}%;transform:translate(-50%,0);
+      font-size:13px;color:#ff6633;letter-spacing:1px;text-align:center;
+      font-family:'Press Start 2P',monospace;
+    ">CLICK TO AIM</div>
+    <!-- Role label -->
+    <div style="
+      position:absolute;top:${(1 - vpY - vpH) * 100 + 1}%;left:${screenCenterX}%;transform:translateX(-50%);
+      font-family:'Press Start 2P',monospace;font-size:11px;
+      color:#ff6633;letter-spacing:2px;
+    ">GUNNER</div>
+  `;
+  overlay.appendChild(hud);
+  _gunnerHUD = hud;
+
+  // Driver label on P1 viewport
+  const driverLabel = document.createElement('div');
+  driverLabel.id = 'driver-label';
+  const drvLeft = (vp?.x === 0.5) ? 25 : 50; // left half or top half
+  const drvTop = (vp?.y === 0.5) ? 'top:calc(12px)' : 'top:12px';
+  driverLabel.style.cssText = `
+    position:absolute;${drvTop};left:${drvLeft}%;transform:translateX(-50%);
+    font-family:'Press Start 2P',monospace;font-size:11px;
+    color:#ff6633;letter-spacing:2px;pointer-events:none;
+  `;
+  driverLabel.textContent = 'DRIVER';
+  overlay.appendChild(driverLabel);
+}
+
+function _updateGunnerHUD(turretController, heldItem) {
+  if (!_gunnerHUD) return;
+
+  // Angle display
+  const angleEl = _gunnerHUD.querySelector('#gunner-angle');
+  if (angleEl) {
+    const deg = Math.round(turretController.yaw * 180 / Math.PI);
+    angleEl.textContent = `TURRET ${deg > 0 ? '+' : ''}${deg}°`;
+  }
+
+  // Item slot
+  const itemEl = _gunnerHUD.querySelector('#gunner-item');
+  if (itemEl) {
+    const hasItem = heldItem && heldItem !== '-';
+    itemEl.textContent = hasItem ? heldItem : '-';
+    itemEl.style.borderColor = hasItem ? '#ff4400' : '#555';
+  }
+
+  // Lock hint: hide when pointer is locked
+  const hintEl = _gunnerHUD.querySelector('#gunner-lock-hint');
+  if (hintEl) {
+    hintEl.style.display = document.pointerLockElement ? 'none' : 'block';
+  }
+}
+
+function _removeGunnerHUD() {
+  const existing = document.getElementById('gunner-hud');
+  if (existing) existing.remove();
+  const dLabel = document.getElementById('driver-label');
+  if (dLabel) dLabel.remove();
+  _gunnerHUD = null;
+}
+
 export function cleanupRace() {
+  _removeGunnerHUD();
   if (raceCleanup) raceCleanup();
 }

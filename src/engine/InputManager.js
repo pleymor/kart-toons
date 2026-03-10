@@ -50,6 +50,24 @@ export class InputManager {
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
 
+    // Mouse state for turret aiming
+    this._mouseX = 0; // -1..1 normalized
+    this._mouseY = 0;
+    this._mouseButtons = new Set();
+    this._mouseDeltaX = 0;
+    this._mouseDeltaY = 0;
+    this._pointerLocked = false;
+
+    this._onMouseMove = this._onMouseMove.bind(this);
+    this._onMouseDown = this._onMouseDown.bind(this);
+    this._onMouseUp = this._onMouseUp.bind(this);
+    this._onPointerLockChange = this._onPointerLockChange.bind(this);
+
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
+    document.addEventListener('pointerlockchange', this._onPointerLockChange);
+
     this._loadBindings();
   }
 
@@ -78,6 +96,55 @@ export class InputManager {
 
   _onKeyUp(e) {
     this._keysDown.delete(e.code);
+  }
+
+  _onMouseMove(e) {
+    if (this._pointerLocked) {
+      this._mouseDeltaX += e.movementX || 0;
+      this._mouseDeltaY += e.movementY || 0;
+    } else {
+      this._mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+      this._mouseY = (e.clientY / window.innerHeight) * 2 - 1;
+    }
+  }
+
+  _onMouseDown(e) {
+    this._mouseButtons.add(e.button);
+  }
+
+  _onMouseUp(e) {
+    this._mouseButtons.delete(e.button);
+  }
+
+  _onPointerLockChange() {
+    this._pointerLocked = !!document.pointerLockElement;
+  }
+
+  requestPointerLock() {
+    const canvas = document.getElementById('game-canvas');
+    if (canvas && !document.pointerLockElement) {
+      canvas.requestPointerLock?.();
+    }
+  }
+
+  getMouseState() {
+    return {
+      x: this._mouseX,
+      y: this._mouseY,
+      deltaX: this._mouseDeltaX,
+      deltaY: this._mouseDeltaY,
+      leftButton: this._mouseButtons.has(0),
+      rightButton: this._mouseButtons.has(2),
+      locked: this._pointerLocked
+    };
+  }
+
+  consumeMouseDelta() {
+    const dx = this._mouseDeltaX;
+    const dy = this._mouseDeltaY;
+    this._mouseDeltaX = 0;
+    this._mouseDeltaY = 0;
+    return { dx, dy };
   }
 
   update() {
@@ -346,6 +413,11 @@ export class InputManager {
   dispose() {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('mousedown', this._onMouseDown);
+    window.removeEventListener('mouseup', this._onMouseUp);
+    document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+    if (document.pointerLockElement) document.exitPointerLock?.();
     const jz = document.getElementById('joystick-zone');
     if (jz) jz.remove();
     const tb = document.getElementById('touch-buttons');

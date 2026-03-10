@@ -29,12 +29,20 @@ export class TurretController {
 
   update(delta, input) {
     // input: { aimX: -1..1, aimY: -1..1, fire: bool }
+    //    or: { mouseDX, mouseDY, fire: bool } for mouse control
     if (!input) return;
 
-    this.yaw += input.aimX * this.yawSpeed * delta;
-    this.yaw = Math.max(-this.maxYaw, Math.min(this.maxYaw, this.yaw));
+    if (input.mouseDX !== undefined) {
+      // Mouse: direct delta in pixels → radians
+      const sensitivity = 0.003;
+      this.yaw -= input.mouseDX * sensitivity;
+      this.pitch -= input.mouseDY * sensitivity;
+    } else {
+      this.yaw += input.aimX * this.yawSpeed * delta;
+      this.pitch += input.aimY * this.pitchSpeed * delta;
+    }
 
-    this.pitch += input.aimY * this.pitchSpeed * delta;
+    this.yaw = Math.max(-this.maxYaw, Math.min(this.maxYaw, this.yaw));
     this.pitch = Math.max(-this.maxPitch, Math.min(this.maxPitch, this.pitch));
 
     this.mesh.rotation.y = this.yaw;

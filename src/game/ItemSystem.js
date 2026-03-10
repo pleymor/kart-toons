@@ -711,6 +711,132 @@ export class ItemSystem {
     return nearest;
   }
 
+  fireTurretShot(from, direction, ownerKart) {
+    const weight = ownerKart.weightFactor || 3;
+    // Heavy karts = bigger, heavier balls; light karts = small, fast balls
+    const mass = 0.5 + weight * 0.3;
+    const scale = 0.6 + weight * 0.15;
+    const target = from.clone().add(direction.clone().multiplyScalar(80));
+    this._spawnTurretProjectile(from, target, ownerKart, mass, scale);
+  }
+
+  _spawnTurretProjectile(from, toward, ownerKart, mass = 1, scale = 1) {
+    const dir = toward.clone().sub(from).normalize();
+    const mat = new THREE.MeshPhongMaterial({ color: 0xff6600, emissive: 0x662200 });
+    const mesh = new THREE.Mesh(_projectileGeo, mat);
+    mesh.scale.setScalar(scale);
+    mesh.position.copy(from);
+    this.scene.add(mesh);
+
+    const speed = 40;
+    const vel = dir.clone().multiplyScalar(speed);
+    const gravity = 25;
+    const pos = mesh.position.clone();
+
+    this.activeItems.push({
+      type: 'projectile',
+      mesh,
+      timer: 5,
+      update: (delta) => {
+        vel.y -= gravity * delta;
+        pos.add(vel.clone().multiplyScalar(delta));
+        mesh.position.copy(pos);
+        // Destroy on ground contact
+        if (pos.y < (ownerKart._groundPlaneY ?? -2)) {
+          mesh.visible = false;
+          this.scene.remove(mesh);
+          return;
+        }
+        for (const p of this.participants) {
+          if (p.kartController === ownerKart) continue;
+          if (p.kartController.invulnerable || p.kartController.phaseGhost) continue;
+          const d = p.kartController.position.distanceTo(pos);
+          if (d < 2.5) {
+            // Knockback: E = mv², force proportional to mass and ball speed squared
+            const ballSpeed = vel.length();
+            const energy = mass * ballSpeed * ballSpeed * 0.02;
+            p.kartController.applyKnockback(vel.clone().normalize(), energy);
+            // Explosion VFX
+            this._spawnImpactExplosion(pos.clone(), scale);
+            // SFX
+            const audio = getAudioEngine();
+            if (audio) audio.playSFX3D('collision', pos, this.listenerPos);
+            mesh.visible = false;
+            this.scene.remove(mesh);
+            return;
+          }
+        }
+      }
+    });
+  }
+
+  _spawnImpactExplosion(pos, size = 1) {
+    // Expanding sphere + particles
+    const explosionMat = new THREE.MeshBasicMaterial({
+      color: 0xff6600, transparent: true, opacity: 0.8
+    });
+    const explosionMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3 * size, 8, 6), explosionMat
+    );
+    explosionMesh.position.copy(pos);
+    this.scene.add(explosionMesh);
+
+    // Spark particles
+    const sparkCount = 8;
+    const sparkGeo = new THREE.BufferGeometry();
+    const sparkPos = new Float32Array(sparkCount * 3);
+    const sparkVel = [];
+    for (let i = 0; i < sparkCount; i++) {
+      sparkPos[i * 3] = pos.x;
+      sparkPos[i * 3 + 1] = pos.y;
+      sparkPos[i * 3 + 2] = pos.z;
+      sparkVel.push({
+        x: (Math.random() - 0.5) * 12,
+        y: Math.random() * 8,
+        z: (Math.random() - 0.5) * 12
+      });
+    }
+    sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+    const sparkMat = new THREE.PointsMaterial({
+      color: 0xffaa00, size: 0.3 * size, transparent: true, opacity: 1
+    });
+    const sparks = new THREE.Points(sparkGeo, sparkMat);
+    this.scene.add(sparks);
+
+    let elapsed = 0;
+    this.activeItems.push({
+      type: 'vfx',
+      mesh: explosionMesh,
+      timer: 0.5,
+      update: (delta) => {
+        elapsed += delta;
+        const t = elapsed / 0.5;
+        // Expand and fade
+        const s = (1 + t * 3) * size;
+        explosionMesh.scale.setScalar(s);
+        explosionMat.opacity = 0.8 * (1 - t);
+        explosionMesh.material.color.lerp(new THREE.Color(0x331100), delta * 3);
+        // Sparks
+        const positions = sparkGeo.attributes.position.array;
+        for (let i = 0; i < sparkCount; i++) {
+          sparkVel[i].y -= 15 * delta;
+          positions[i * 3] += sparkVel[i].x * delta;
+          positions[i * 3 + 1] += sparkVel[i].y * delta;
+          positions[i * 3 + 2] += sparkVel[i].z * delta;
+        }
+        sparkGeo.attributes.position.needsUpdate = true;
+        sparkMat.opacity = 1 - t;
+        if (t >= 1) {
+          this.scene.remove(explosionMesh);
+          this.scene.remove(sparks);
+          sparkGeo.dispose();
+          sparkMat.dispose();
+          explosionMat.dispose();
+        }
+      }
+    });
+  }
+
   _spawnProjectile(from, toward, onHit) {
     const dir = toward.clone().sub(from).normalize();
     const mat = new THREE.MeshPhongMaterial({ color: 0xff6600, emissive: 0x662200 });
