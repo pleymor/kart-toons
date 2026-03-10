@@ -144,11 +144,20 @@ export class KartController {
       this.velocity.add(this._tempVec.copy(this._forward).multiplyScalar(gravityForce * delta));
     }
 
-    // Braking (only when grounded)
+    // Braking / reverse (only when grounded)
     if (input?.brake && this.grounded) {
-      const brakeForce = this.brakePower * delta;
-      this.speed = Math.max(0, this.speed - brakeForce);
-      this.velocity.copy(this._forward).multiplyScalar(this.speed);
+      if (this.speed > 0.5) {
+        // Braking
+        const brakeForce = this.brakePower * delta;
+        this.speed = Math.max(0, this.speed - brakeForce);
+        this.velocity.copy(this._forward).multiplyScalar(this.speed);
+      } else {
+        // Reverse
+        const reverseMax = this.baseMaxSpeed * 0.3;
+        const reverseAccel = this.accelForce * 0.4 * delta;
+        this.speed = Math.min(reverseMax, this.speed + reverseAccel);
+        this.velocity.copy(this._forward).multiplyScalar(-this.speed);
+      }
     }
 
     // Drift logic

@@ -1367,6 +1367,73 @@ function buildTrack(renderer, circuit) {
   trackMesh.receiveShadow = true;
   renderer.scene.add(trackMesh);
 
+  // Start/finish line — checkered pattern
+  {
+    const p0 = waypoints[0];
+    const p1 = waypoints[1];
+    const dir = new THREE.Vector3().subVectors(p1, p0).normalize();
+    const right = new THREE.Vector3(-dir.z, 0, dir.x); // perpendicular
+
+    const lineWidth = trackWidth;
+    const lineDepth = 2.5;
+    const checks = 8; // checkered squares per row
+    const rows = 2;
+    const sqW = lineWidth / checks;
+    const sqD = lineDepth / rows;
+
+    const geos = [];
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const blackMat = new THREE.MeshBasicMaterial({ color: 0x111111, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < checks; c++) {
+        const isWhite = (r + c) % 2 === 0;
+        const geo = new THREE.PlaneGeometry(sqW, sqD);
+        // Position each square
+        const cx = (c + 0.5 - checks / 2) * sqW;
+        const cy = (r + 0.5 - rows / 2) * sqD;
+        const mat4 = new THREE.Matrix4();
+        const pos = p0.clone()
+          .add(right.clone().multiplyScalar(cx))
+          .add(dir.clone().multiplyScalar(cy));
+        pos.y += 0.15; // above road surface
+        mat4.makeRotationX(-Math.PI / 2);
+        // Align with track direction
+        const quat = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 0, 1),
+          dir
+        );
+        const rotMat = new THREE.Matrix4().makeRotationFromQuaternion(quat);
+        const transMat = new THREE.Matrix4().makeTranslation(pos.x, pos.y, pos.z);
+        geo.applyMatrix4(mat4);
+        geo.applyMatrix4(rotMat);
+        geo.applyMatrix4(transMat);
+
+        if (isWhite) {
+          if (!geos[0]) geos[0] = [];
+          geos[0].push(geo);
+        } else {
+          if (!geos[1]) geos[1] = [];
+          geos[1].push(geo);
+        }
+      }
+    }
+
+    // Merge into 2 meshes (white + black)
+    if (geos[0]?.length) {
+      const merged = mergeGeometries(geos[0], false);
+      const mesh = new THREE.Mesh(merged, whiteMat);
+      mesh.receiveShadow = true;
+      renderer.scene.add(mesh);
+    }
+    if (geos[1]?.length) {
+      const merged = mergeGeometries(geos[1], false);
+      const mesh = new THREE.Mesh(merged, blackMat);
+      mesh.receiveShadow = true;
+      renderer.scene.add(mesh);
+    }
+  }
+
   // Ground plane with procedural shader
   const groundUniforms = {
     baseColor: { value: baseColor },
@@ -1546,25 +1613,6 @@ function buildTrackElements(renderer, circuit, waypoints) {
       rampGroup.add(stripe);
     }
 
-    // Icon indicator for trick ramps
-    if (trick === 'backflip') {
-      // Arrow curving backward
-      const arrowGeo = new THREE.BoxGeometry(0.6, 0.6, 0.08);
-      const arrowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xcc22ff, emissiveIntensity: 0.5 });
-      const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-      arrow.position.set(0, 1.4, -0.5);
-      arrow.rotation.x = -0.25;
-      rampGroup.add(arrow);
-    } else if (trick === 'barrelroll') {
-      // Horizontal bar indicator
-      const barGeo = new THREE.BoxGeometry(2.0, 0.15, 0.08);
-      const barMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x22ccff, emissiveIntensity: 0.5 });
-      const bar = new THREE.Mesh(barGeo, barMat);
-      bar.position.set(0, 1.4, -0.5);
-      bar.rotation.x = -0.25;
-      rampGroup.add(bar);
-    }
-
     mergeGroupChildren(rampGroup);
     rampGroup.position.set(wp.x, wp.y, wp.z);
     rampGroup.rotation.y = yaw;
@@ -1664,7 +1712,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
     elements.push({
       type: 'slowdown',
       position: wp.clone(),
-      radius: trackWidth * 0.5,
+      radius: stripW * 0.5 + 1.5, // match visual size of rumble strips
       mesh: slowGroup,
       speedFactor: 0.7
     });
@@ -1768,17 +1816,24 @@ function checkTrackElements(elements, participants, delta) {
         cooldowns.set(cooldownKey, el.duration + 0.5);
 
       } else if (el.type === 'slowdown') {
-        // Reduce speed and cancel any active boost effects
-        kart.speed *= el.speedFactor;
-        kart.velocity.x *= el.speedFactor;
-        kart.velocity.z *= el.speedFactor;
+        // Moderate speed cut (not a wall, just a penalty)
+        kart.speed *= 0.6;
+        kart.velocity.x *= 0.6;
+        kart.velocity.z *= 0.6;
+        // Cancel any active boost effects
         for (let ei = kart.activeEffects.length - 1; ei >= 0; ei--) {
           if (kart.activeEffects[ei].keepMomentum) {
             if (kart.activeEffects[ei].onEnd) kart.activeEffects[ei].onEnd(kart);
             kart.activeEffects.splice(ei, 1);
           }
         }
-        cooldowns.set(cooldownKey, 1.5);
+        // Sustained slowdown for 0.8 second
+        kart.applyEffect({
+          timer: 0.8,
+          onTick(k) { k.speedMultiplier = Math.min(k.speedMultiplier, 0.7); },
+          onEnd() {}
+        });
+        cooldowns.set(cooldownKey, 2.0);
       }
     }
   }

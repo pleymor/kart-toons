@@ -113,8 +113,14 @@ export class RaceManager {
               characterId: p.characterId
             });
 
-            // Check if all finished
-            if (this.finishOrder.length >= this.participants.length) {
+            // Check if all human players finished
+            const humanCount = this.participants.filter(p => p.isHuman).length;
+            const humanFinished = this.finishOrder.filter(f =>
+              this.participants.find(p => p.id === f.id)?.isHuman
+            ).length;
+            if (humanCount > 0 ? humanFinished >= humanCount : this.finishOrder.length >= this.participants.length) {
+              // Simulate finish times for unfinished AI participants
+              this._simulateUnfinishedAI();
               this.state = RACE_STATE.FINISHED;
             }
           }
@@ -141,6 +147,44 @@ export class RaceManager {
       if (a.lapCount !== b.lapCount) return b.lapCount - a.lapCount;
       return b.lapProgress - a.lapProgress;
     });
+  }
+
+  _simulateUnfinishedAI() {
+    // Give estimated finish times to AI that haven't crossed the line yet
+    const lastRealTime = this.finishOrder.length > 0
+      ? this.finishOrder[this.finishOrder.length - 1].time
+      : this.timer;
+
+    const unfinished = this.participants.filter(p => {
+      const data = this.participantData.get(p.id);
+      return !data.finished;
+    });
+
+    // Sort unfinished by progress (most advanced first)
+    unfinished.sort((a, b) => {
+      const da = this.participantData.get(a.id);
+      const db = this.participantData.get(b.id);
+      const progA = da.lapCount + da.lapProgress;
+      const progB = db.lapCount + db.lapProgress;
+      return progB - progA;
+    });
+
+    for (let i = 0; i < unfinished.length; i++) {
+      const p = unfinished[i];
+      const data = this.participantData.get(p.id);
+      // Stagger by 2-5s after last real finisher, spread apart
+      const simulatedTime = lastRealTime + 2 + i * 3 + Math.random() * 2;
+      data.finished = true;
+      data.finishTime = simulatedTime;
+      data.lapCount = this.maxLaps;
+      this.finishOrder.push({
+        id: p.id,
+        time: simulatedTime,
+        characterId: p.characterId
+      });
+    }
+
+    this._updateStandings();
   }
 
   getPosition(participantId) {
