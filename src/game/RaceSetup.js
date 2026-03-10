@@ -1349,7 +1349,7 @@ function buildTrack(renderer, circuit) {
     fragmentShader: roadFrag,
     uniforms: roadUniforms,
     side: THREE.DoubleSide,
-    transparent: true
+    transparent: false
   });
 
   // Build a single continuous track mesh with smooth corners
@@ -1376,16 +1376,71 @@ function buildTrack(renderer, circuit) {
     side: THREE.DoubleSide
   });
 
-  // Place ground below the lowest waypoint
+  // Compute min Y for fallback ground plane
   let minY = Infinity;
   for (const wp of waypoints) {
     if (wp.y < minY) minY = wp.y;
   }
 
   const groundGeo = new THREE.PlaneGeometry(2000, 2000, 200, 200);
+
+  // Deform ground vertices to follow circuit elevation
+  // PlaneGeometry is in XY plane; after rotation -PI/2 around X:
+  // local X → world X, local Y → world -Z, local Z → world Y
+  const posAttr = groundGeo.getAttribute('position');
+  const verts = posAttr.array;
+  const wps = waypoints;
+  const nWps = wps.length;
+  const tw = circuit.trackWidth || 12;
+
+  for (let vi = 0; vi < posAttr.count; vi++) {
+    const lx = verts[vi * 3];
+    const ly = verts[vi * 3 + 1];
+    const wx = lx;
+    const wz = -ly;
+
+    // Find nearest circuit segment
+    let bestDistSq = Infinity;
+    let bestY = 0;
+    for (let i = 0; i < nWps; i++) {
+      const a = wps[i];
+      const b = wps[(i + 1) % nWps];
+      const abx = b.x - a.x;
+      const abz = b.z - a.z;
+      const apx = wx - a.x;
+      const apz = wz - a.z;
+      const abLenSq = abx * abx + abz * abz;
+      const t = abLenSq > 0 ? Math.max(0, Math.min(1, (apx * abx + apz * abz) / abLenSq)) : 0;
+      const cx = a.x + abx * t;
+      const cz = a.z + abz * t;
+      const cy = a.y + (b.y - a.y) * t;
+      const dx = wx - cx;
+      const dz = wz - cz;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        bestY = cy;
+      }
+    }
+
+    const dist = Math.sqrt(bestDistSq);
+    const blendStart = tw * 0.5 + 5;
+    const blendEnd = tw * 0.5 + 200;
+    const blendT = Math.min(1, Math.max(0, (dist - blendStart) / (blendEnd - blendStart)));
+
+    // Near track: below road to prevent ground shader noise poking through (+3 max)
+    const nearY = bestY - 4;
+    const farY = bestY - dist * 0.04 - 5;
+    const targetY = nearY * (1 - blendT) + farY * blendT;
+
+    verts[vi * 3 + 2] = targetY;
+  }
+  posAttr.needsUpdate = true;
+  groundGeo.computeVertexNormals();
+
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = minY - 2;
+  ground.position.y = 0;
   ground.receiveShadow = true;
   renderer.scene.add(ground);
 

@@ -42,9 +42,9 @@ void main() {
     // Grass: gentle rolling hills
     h = fbm(wp * 0.008) * 6.0 + noise(wp * 0.03) * 1.5;
   } else if (biome == 1) {
-    // Lava: jagged rocky terrain with crevasses
-    h = fbm(wp * 0.01) * 8.0;
-    h -= smoothstep(0.4, 0.5, fbm(wp * 0.04)) * 4.0; // crevasses
+    // Lava: small-scale rocky detail (base elevation set by JS deformation)
+    h = fbm(wp * 0.03) * 2.0 + noise(wp * 0.08) * 1.0;
+    h -= smoothstep(0.4, 0.5, fbm(wp * 0.06)) * 1.0; // small crevasses
   } else if (biome == 2) {
     // Water: animated waves
     float wave1 = sin(wp.x * 0.04 + time * 0.8) * cos(wp.y * 0.03 + time * 0.6);

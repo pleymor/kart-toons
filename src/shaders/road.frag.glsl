@@ -61,39 +61,22 @@ vec3 asphaltRoad(vec2 uv, vec2 wp) {
 }
 
 vec3 lavaRoad(vec2 uv, vec2 wp) {
-  // Cracked stone tile pattern
-  vec2 tileCoord = wp * 1.2;
-  vec2 tile = floor(tileCoord);
-  vec2 f = fract(tileCoord);
-  float tileNoise = hash(tile);
+  // Solid volcanic rock — no lava on the road surface
+  float grain = fbm(wp * 6.0) * 0.2;
+  float fine = noise(wp * 25.0) * 0.1;
+  float coarse = noise(wp * 3.0) * 0.08;
+  vec3 col = baseColor * (0.65 + grain + fine + coarse);
 
-  // Base stone color with per-tile variation
-  float grain = fbm(wp * 8.0) * 0.15;
-  float fine = noise(wp * 35.0) * 0.08;
-  vec3 col = baseColor * (0.7 + grain + fine + tileNoise * 0.1);
+  // Natural rock cracks (dry, no glow)
+  float crack1 = smoothstep(0.46, 0.5, fbm(wp * 3.0 + 0.5));
+  float crack2 = smoothstep(0.46, 0.5, fbm(wp * 5.0 + 2.3));
+  float cracks = max(crack1, crack2 * 0.7);
+  col *= 1.0 - cracks * 0.2;
 
-  // Tile gaps (cracks between stones)
-  float gap = smoothstep(0.03, 0.07, f.x) * smoothstep(0.03, 0.07, f.y);
-  gap *= smoothstep(0.03, 0.07, 1.0 - f.x) * smoothstep(0.03, 0.07, 1.0 - f.y);
-
-  // Lava glows in the gaps between tiles
-  float lavaGlow = (1.0 - gap) * (0.6 + 0.4 * sin(time * 0.5 + tileNoise * 6.0));
-  col = mix(col, vec3(1.0, 0.35, 0.0), lavaGlow * 0.8);
-  col *= 0.6 + gap * 0.4;
-
-  // Interior lava veins (larger cracks through tiles)
-  float vein = smoothstep(0.68, 0.75, noise(wp * 6.0 + time * 0.008));
-  float veinPulse = 0.7 + 0.3 * sin(time * 1.2 + wp.y * 0.2);
-  col += vec3(1.0, 0.3, 0.0) * vein * 0.5 * veinPulse;
-
-  // Glowing edge cracks
+  // Edge wear — lighter rock at road edges
   float edgeDist = min(uv.x, 1.0 - uv.x);
-  float edgeCrack = smoothstep(0.08, 0.02, edgeDist) * (0.5 + 0.5 * sin(time * 0.6 + wp.y * 0.3));
-  col += vec3(1.0, 0.25, 0.0) * edgeCrack * 0.5;
-
-  // Ember spots (rare, static glowing dots)
-  float ember = smoothstep(0.92, 0.95, noise(wp * 20.0));
-  col += vec3(1.0, 0.5, 0.0) * ember * 0.3;
+  float edgeWear = smoothstep(0.1, 0.02, edgeDist);
+  col = mix(col, baseColor * 0.5, edgeWear * 0.3);
 
   return col;
 }
@@ -177,5 +160,5 @@ void main() {
 
   float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
   col = mix(col, fogColor, fogFactor);
-  gl_FragColor = vec4(col, 0.85);
+  gl_FragColor = vec4(col, 1.0);
 }
