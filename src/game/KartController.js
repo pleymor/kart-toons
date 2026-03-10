@@ -57,6 +57,11 @@ export class KartController {
     this._respawnPos = new THREE.Vector3();
     this._respawnYaw = 0;
 
+    // Trick animations (backflip, barrel roll)
+    this._trickType = null;  // 'backflip' | 'barrelroll' | null
+    this._trickAngle = 0;    // accumulated rotation during trick
+    this._trickSpeed = 0;    // radians per second
+
     // Drift
     this.driftState = DRIFT_STATE.NONE;
     this.driftTimer = 0;
@@ -428,8 +433,21 @@ export class KartController {
     if (this.mesh) {
       this.mesh.position.copy(this.position);
 
+      // Trick animation progress — cap at one full rotation
+      if (this._trickType && (this.airborne || this.falling)) {
+        if (this._trickAngle < Math.PI * 2) {
+          this._trickAngle = Math.min(Math.PI * 2, this._trickAngle + this._trickSpeed * (1 / 60));
+        }
+      }
+      // End trick on landing
+      if (this._trickType && this.grounded) {
+        this._trickType = null;
+        this._trickAngle = 0;
+        this._trickSpeed = 0;
+      }
+
       // In the air: pitch follows vertical velocity (nose up on launch, nose down on fall)
-      if (this.airborne || this.falling) {
+      if ((this.airborne || this.falling) && !this._trickType) {
         const hSpeed = Math.max(this.speed, 1);
         this._targetPitch = Math.atan2(this.velocity.y, hSpeed) * 0.6;
       }
@@ -439,8 +457,17 @@ export class KartController {
 
       this.mesh.rotation.order = 'YXZ';
       this.mesh.rotation.y = this.yaw;
-      this.mesh.rotation.x = this.pitchAngle;
-      this.mesh.rotation.z = 0;
+
+      if (this._trickType === 'backflip') {
+        this.mesh.rotation.x = -this._trickAngle;
+        this.mesh.rotation.z = 0;
+      } else if (this._trickType === 'barrelroll') {
+        this.mesh.rotation.x = this.pitchAngle;
+        this.mesh.rotation.z = this._trickAngle;
+      } else {
+        this.mesh.rotation.x = this.pitchAngle;
+        this.mesh.rotation.z = 0;
+      }
     }
   }
 

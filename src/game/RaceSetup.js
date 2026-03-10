@@ -421,8 +421,17 @@ function updateCockpitCamera(camera, kart, input) {
   const pitch = kart.pitchAngle || 0;
   const yaw = kart.yaw;
 
+  // Trick rotations for camera
+  let trickPitch = 0;
+  let trickRoll = 0;
+  if (kart._trickType === 'backflip') {
+    trickPitch = -(kart._trickAngle || 0);
+  } else if (kart._trickType === 'barrelroll') {
+    trickRoll = kart._trickAngle || 0;
+  }
+
   // Copy orientation directly from kart mesh (YXZ order like the mesh)
-  _camEuler.set(pitch, yaw, 0, 'YXZ');
+  _camEuler.set(pitch + trickPitch, yaw, trickRoll, 'YXZ');
 
   // Offset camera up in kart's local space, then to world
   _camOffset.set(0, 1.8, 0);
@@ -438,7 +447,7 @@ function updateCockpitCamera(camera, kart, input) {
   const yawFlip = behind ? 0 : Math.PI;
   const pitchSign = behind ? 1 : -1;
   camera.rotation.order = 'YXZ';
-  camera.rotation.set(pitchSign * pitch - lookY * 0.8, yaw + yawFlip - lookX * 2.1, 0);
+  camera.rotation.set(pitchSign * (pitch + trickPitch) - lookY * 0.8, yaw + yawFlip - lookX * 2.1, trickRoll);
 
   // Fish-eye effect: FOV increases with speed
   const speedRatio = Math.min((kart.speed || 0) / (kart.baseMaxSpeed * 0.5 || 80), 2.0);
@@ -1495,9 +1504,15 @@ function buildTrackElements(renderer, circuit, waypoints) {
   for (let i = 0; i < (circuit.id || '').length; i++) seed += circuit.id.charCodeAt(i);
   const rng = mulberry32(seed + 42);
 
-  // Ramps: 3-4 per circuit, every ~18-22 waypoints
+  // Ramps: 3 per circuit, each a different trick type
   // Skip ramps near the volcanic crest (waypoints 10-14)
   const skipRampZone = circuit.id === 'volcan-peak' ? [10, 14] : null;
+  const rampTypes = ['normal', 'backflip', 'barrelroll'];
+  const rampColors = {
+    normal:     { base: 0xff8800, stripe: 0xffcc00 },
+    backflip:   { base: 0xcc22ff, stripe: 0xee88ff },
+    barrelroll: { base: 0x22ccff, stripe: 0x88eeff }
+  };
   const rampStep = Math.floor(n / 4);
   for (let k = 0; k < 3; k++) {
     const idx = Math.min(n - 2, Math.floor(rampStep * (k + 0.5) + rng() * 4 - 2));
@@ -1506,13 +1521,15 @@ function buildTrackElements(renderer, circuit, waypoints) {
     const next = waypoints[(idx + 1) % n];
     const dx = next.x - wp.x;
     const dz = next.z - wp.z;
-    const segLen = Math.sqrt(dx * dx + dz * dz) || 1;
     const yaw = Math.atan2(dx, dz);
+
+    const trick = rampTypes[k % 3];
+    const colors = rampColors[trick];
 
     // Ramp mesh: a tilted box (wedge)
     const rampGroup = new THREE.Group();
     const rampGeo = new THREE.BoxGeometry(4, 0.3, 3);
-    const rampMat = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: 0.6 });
+    const rampMat = new THREE.MeshStandardMaterial({ color: colors.base, roughness: 0.6 });
     const rampMesh = new THREE.Mesh(rampGeo, rampMat);
     rampMesh.rotation.x = -0.25; // tilt upward
     rampMesh.position.y = 0.6;
@@ -1521,11 +1538,30 @@ function buildTrackElements(renderer, circuit, waypoints) {
     // Stripes on ramp
     for (let s = -1; s <= 1; s++) {
       const stripeGeo = new THREE.BoxGeometry(0.3, 0.32, 3.02);
-      const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.5 });
+      const stripeMat = new THREE.MeshStandardMaterial({ color: colors.stripe, roughness: 0.5 });
       const stripe = new THREE.Mesh(stripeGeo, stripeMat);
       stripe.rotation.x = -0.25;
       stripe.position.set(s * 1.2, 0.62, 0);
       rampGroup.add(stripe);
+    }
+
+    // Icon indicator for trick ramps
+    if (trick === 'backflip') {
+      // Arrow curving backward
+      const arrowGeo = new THREE.BoxGeometry(0.6, 0.6, 0.08);
+      const arrowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xcc22ff, emissiveIntensity: 0.5 });
+      const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+      arrow.position.set(0, 1.4, -0.5);
+      arrow.rotation.x = -0.25;
+      rampGroup.add(arrow);
+    } else if (trick === 'barrelroll') {
+      // Horizontal bar indicator
+      const barGeo = new THREE.BoxGeometry(2.0, 0.15, 0.08);
+      const barMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x22ccff, emissiveIntensity: 0.5 });
+      const bar = new THREE.Mesh(barGeo, barMat);
+      bar.position.set(0, 1.4, -0.5);
+      bar.rotation.x = -0.25;
+      rampGroup.add(bar);
     }
 
     mergeGroupChildren(rampGroup);
@@ -1535,6 +1571,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
 
     elements.push({
       type: 'ramp',
+      trick,
       position: wp.clone(),
       radius: 3.5,
       mesh: rampGroup,
@@ -1689,6 +1726,16 @@ function checkTrackElements(elements, participants, delta) {
         kart.grounded = false;
         const speedRatio = Math.max(0.5, kart.speed / (kart.baseMaxSpeed || 50));
         kart.velocity.y = Math.max(12, el.launchVelocity * speedRatio);
+        // Start trick animation if applicable
+        if (el.trick === 'backflip') {
+          kart._trickType = 'backflip';
+          kart._trickAngle = 0;
+          kart._trickSpeed = Math.PI * 1.0; // full backflip in ~2s
+        } else if (el.trick === 'barrelroll') {
+          kart._trickType = 'barrelroll';
+          kart._trickAngle = 0;
+          kart._trickSpeed = Math.PI * 1.2; // full barrel roll in ~1.7s
+        }
         cooldowns.set(cooldownKey, 2.0); // 2s cooldown
 
       } else if (el.type === 'boost') {
