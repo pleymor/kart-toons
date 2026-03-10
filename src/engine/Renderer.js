@@ -366,7 +366,7 @@ export class Renderer {
     camera.updateProjectionMatrix();
     // Add temporary fill light so rearview isn't dark
     if (!this._rearviewLight) {
-      this._rearviewLight = new THREE.AmbientLight(0xffffff, 1.5);
+      this._rearviewLight = new THREE.AmbientLight(0xffffff, 3.0);
     }
     this.scene.add(this._rearviewLight);
     this.renderer.render(this.scene, camera);

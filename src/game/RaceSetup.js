@@ -358,8 +358,7 @@ export async function startRace(config) {
     renderer.render();
 
     // Rearview mirror render (every 3rd frame, hide weather particles)
-    rearviewFrameCounter++;
-    if (humanKarts.length > 0 && rearviewFrameCounter % 3 === 0) {
+    if (humanKarts.length > 0) {
       const kart = humanKarts[0];
       rearviewCam.position.set(kart.position.x, kart.position.y + 1.6, kart.position.z);
       _rearviewLookAt.set(
