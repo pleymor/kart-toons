@@ -182,37 +182,17 @@ export class KartController {
     // Move
     this.position.add(this._tempVec.copy(this.velocity).multiplyScalar(delta));
 
-    // Off-road: land on ground plane, then respawn after delay
+    // Off-road: respawn quickly after falling
     if (this.falling) {
-      const gndY = this._groundPlaneY ?? -2;
-      if (this.position.y <= gndY) {
-        this.position.y = gndY;
-        this.velocity.y = 0;
-        this.falling = false;
-        this.grounded = true;
-        this.surfaceFriction = 0.05;
-        // Auto-respawn after 2 seconds on ground
-        if (!this._offRoadTimer) this._offRoadTimer = 0;
-      }
-      if (this.position.y < -50) {
-        // Safety net: respawn immediately if somehow fell through
-        this.position.copy(this._respawnPos);
-        this.yaw = this._respawnYaw;
-        this.velocity.set(0, 0, 0);
-        this.speed = 0;
-        this.falling = false;
-        this.grounded = true;
-        this._offRoadTimer = 0;
-      }
-    }
-    // Respawn timer when sitting on ground off-road
-    if (this.grounded && this.surfaceFriction < 0.1) {
       this._offRoadTimer = (this._offRoadTimer || 0) + delta;
-      if (this._offRoadTimer >= 2.0) {
+      if (this._offRoadTimer >= 2.0 || this.position.y < -50) {
+        // Respawn back on track
         this.position.copy(this._respawnPos);
         this.yaw = this._respawnYaw;
         this.velocity.set(0, 0, 0);
         this.speed = 0;
+        this.falling = false;
+        this.grounded = true;
         this.surfaceFriction = 1.0;
         this._offRoadTimer = 0;
       }

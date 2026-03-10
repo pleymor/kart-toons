@@ -1538,7 +1538,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
       position: wp.clone(),
       radius: 3.5,
       mesh: rampGroup,
-      launchVelocity: 18
+      launchVelocity: 28
     });
   }
 
@@ -1626,7 +1626,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
     elements.push({
       type: 'slowdown',
       position: wp.clone(),
-      radius: 3.5,
+      radius: trackWidth * 0.5,
       mesh: slowGroup,
       speedFactor: 0.7
     });
@@ -1684,11 +1684,11 @@ function checkTrackElements(elements, participants, delta) {
       if (cooldowns.has(cooldownKey)) continue;
 
       if (el.type === 'ramp') {
-        // Launch kart — velocity scales with speed for natural feel
+        // Launch kart — strong upward velocity for a satisfying jump
         kart.airborne = true;
         kart.grounded = false;
-        const speedRatio = Math.max(0.3, kart.speed / (kart.baseMaxSpeed || 50));
-        kart.velocity.y = el.launchVelocity * speedRatio;
+        const speedRatio = Math.max(0.5, kart.speed / (kart.baseMaxSpeed || 50));
+        kart.velocity.y = Math.max(12, el.launchVelocity * speedRatio);
         cooldowns.set(cooldownKey, 2.0); // 2s cooldown
 
       } else if (el.type === 'boost') {
