@@ -33,12 +33,30 @@ export const GrapplinBoost = {
     hook.position.copy(from);
     hook.position.y += 1;
 
-    // Rope line connecting user to hook/target
-    const ropeMat = new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2 });
+    // Rope as a visible tube mesh
+    const ropeMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
     const ropeGeo = new THREE.BufferGeometry();
     const ropePositions = new Float32Array((_ropeSegments + 1) * 3);
     ropeGeo.setAttribute('position', new THREE.BufferAttribute(ropePositions, 3));
-    const rope = new THREE.Line(ropeGeo, ropeMat);
+    // Thin tube around the rope path
+    const _tubeRadius = 0.06;
+    const _tubeSides = 4;
+    const tubeVertCount = (_ropeSegments + 1) * _tubeSides;
+    const tubePositions = new Float32Array(tubeVertCount * 3);
+    const tubeIndices = [];
+    for (let i = 0; i < _ropeSegments; i++) {
+      for (let j = 0; j < _tubeSides; j++) {
+        const a = i * _tubeSides + j;
+        const b = i * _tubeSides + (j + 1) % _tubeSides;
+        const c = (i + 1) * _tubeSides + j;
+        const d = (i + 1) * _tubeSides + (j + 1) % _tubeSides;
+        tubeIndices.push(a, c, b, b, c, d);
+      }
+    }
+    const tubeGeo = new THREE.BufferGeometry();
+    tubeGeo.setAttribute('position', new THREE.BufferAttribute(tubePositions, 3));
+    tubeGeo.setIndex(tubeIndices);
+    const rope = new THREE.Mesh(tubeGeo, ropeMat);
     rope.frustumCulled = false;
 
     // Group both as one mesh for cleanup
@@ -85,8 +103,8 @@ export const GrapplinBoost = {
           }
 
           // Update rope: from user to hook
-          updateRope(ropePositions, userPos, hook.position, _ropeSegments);
-          ropeGeo.attributes.position.needsUpdate = true;
+          updateRope(tubePositions, userPos, hook.position, _ropeSegments, _tubeRadius, _tubeSides);
+          tubeGeo.attributes.position.needsUpdate = true;
 
         } else if (phase === 'towing') {
           towTimer += delta;
@@ -113,11 +131,11 @@ export const GrapplinBoost = {
 
           // Rope always visible between the two karts
           const anchor = targetPos.clone();
-          anchor.y += 0.8;
+          anchor.y += 1.8;
           const userAnchor = userPos.clone();
-          userAnchor.y += 0.8;
-          updateRope(ropePositions, userAnchor, anchor, _ropeSegments);
-          ropeGeo.attributes.position.needsUpdate = true;
+          userAnchor.y += 1.8;
+          updateRope(tubePositions, userAnchor, anchor, _ropeSegments, _tubeRadius, _tubeSides);
+          tubeGeo.attributes.position.needsUpdate = true;
         }
       },
       onExpire() {
@@ -127,18 +145,49 @@ export const GrapplinBoost = {
   }
 };
 
-// Update rope positions with a slight catenary sag
-function updateRope(positions, from, to, segments) {
+// Update tube geometry from rope path with catenary sag
+function updateRope(tubePositions, from, to, segments, radius, sides) {
+  // First compute the spine points
+  const spine = [];
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     const x = from.x + (to.x - from.x) * t;
     const z = from.z + (to.z - from.z) * t;
-    // Catenary sag: parabola peaking at middle
-    const sag = -Math.sin(t * Math.PI) * 1.2;
+    const sag = -Math.sin(t * Math.PI) * 0.5;
     const y = from.y + (to.y - from.y) * t + sag;
-    positions[i * 3] = x;
-    positions[i * 3 + 1] = y;
-    positions[i * 3 + 2] = z;
+    spine.push(x, y, z);
+  }
+
+  // Build tube vertices around each spine point
+  for (let i = 0; i <= segments; i++) {
+    // Tangent direction
+    const i0 = Math.max(0, i - 1);
+    const i1 = Math.min(segments, i + 1);
+    const tx = spine[i1 * 3] - spine[i0 * 3];
+    const ty = spine[i1 * 3 + 1] - spine[i0 * 3 + 1];
+    const tz = spine[i1 * 3 + 2] - spine[i0 * 3 + 2];
+    const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
+    const dx = tx / tLen, dy = ty / tLen, dz = tz / tLen;
+
+    // Build a perpendicular frame (cross with up, then cross again)
+    let ux = 0, uy = 1, uz = 0;
+    if (Math.abs(dy) > 0.99) { ux = 1; uy = 0; uz = 0; }
+    // Right = tangent × up
+    let rx = dy * uz - dz * uy, ry = dz * ux - dx * uz, rz = dx * uy - dy * ux;
+    const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
+    rx /= rLen; ry /= rLen; rz /= rLen;
+    // Actual up = right × tangent
+    ux = ry * dz - rz * dy; uy = rz * dx - rx * dz; uz = rx * dy - ry * dx;
+
+    for (let j = 0; j < sides; j++) {
+      const angle = (j / sides) * Math.PI * 2;
+      const cos = Math.cos(angle) * radius;
+      const sin = Math.sin(angle) * radius;
+      const vi = (i * sides + j) * 3;
+      tubePositions[vi] = spine[i * 3] + rx * cos + ux * sin;
+      tubePositions[vi + 1] = spine[i * 3 + 1] + ry * cos + uy * sin;
+      tubePositions[vi + 2] = spine[i * 3 + 2] + rz * cos + uz * sin;
+    }
   }
 }
 

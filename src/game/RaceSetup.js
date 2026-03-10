@@ -2145,6 +2145,28 @@ class SceneryCollector {
   }
 }
 
+function _isNearTrack(x, z, waypoints, circuit, margin) {
+  const n = waypoints.length;
+  for (let i = 0; i < n; i++) {
+    const a = waypoints[i];
+    const b = waypoints[(i + 1) % n];
+    const abx = b.x - a.x;
+    const abz = b.z - a.z;
+    const apx = x - a.x;
+    const apz = z - a.z;
+    const abLenSq = abx * abx + abz * abz;
+    const t = abLenSq > 0 ? Math.max(0, Math.min(1, (apx * abx + apz * abz) / abLenSq)) : 0;
+    const cx = a.x + abx * t;
+    const cz = a.z + abz * t;
+    const dx = x - cx;
+    const dz = z - cz;
+    const distSq = dx * dx + dz * dz;
+    const halfW = getTrackWidthAtSegment(circuit, i, t) * 0.5 + margin;
+    if (distSq < halfW * halfW) return true;
+  }
+  return false;
+}
+
 function buildScenery(renderer, circuit, waypoints) {
   const trackWidth = circuit.trackWidth || 12;
   const theme = circuit.theme?.toLowerCase() || '';
@@ -2174,6 +2196,9 @@ function buildScenery(renderer, circuit, waypoints) {
       // Fade prop height toward ground when far from track to avoid floating objects
       const distRatio = Math.min(1, (dist - baseDist) / 20);
       const y = curr.y * (1 - distRatio * 0.85);
+
+      // Skip props too close to the track (within half track width + margin)
+      if (_isNearTrack(x, z, waypoints, circuit, 5)) continue;
 
       placeSceneryProp(collector, theme, p, x, y, z, rng);
     }

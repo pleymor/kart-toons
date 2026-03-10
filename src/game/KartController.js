@@ -144,8 +144,8 @@ export class KartController {
       this.velocity.add(this._tempVec.copy(this._forward).multiplyScalar(gravityForce * delta));
     }
 
-    // Braking
-    if (input?.brake) {
+    // Braking (only when grounded)
+    if (input?.brake && this.grounded) {
       const brakeForce = this.brakePower * delta;
       this.speed = Math.max(0, this.speed - brakeForce);
       this.velocity.copy(this._forward).multiplyScalar(this.speed);
