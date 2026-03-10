@@ -75,7 +75,7 @@ export function open() {
       .toggle.on::after { left:20px; }
     </style>
 
-    <div style="width:100%;max-width:420px;max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    <div style="width:100%;max-width:420px;max-height:85vh;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;">
       <button class="ui-btn ui-btn--pulse" id="resume-btn" style="margin-bottom:clamp(8px,2vw,12px);">
         RESUME
       </button>
