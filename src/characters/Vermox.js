@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+const _tmpVec = new THREE.Vector3();
+
 export const VermoxPassive = {
   id: 'smoke-screen',
   apply(kart) {
@@ -25,10 +27,10 @@ export const NapalmTrail = {
 
         // Drop fire segments for 3 seconds
         if (elapsed <= duration && elapsed % 0.15 < delta) {
-          const pos = kart.position.clone();
+          const pos = _tmpVec.copy(kart.position);
           pos.y += 0.1;
-          const fwd = new THREE.Vector3(Math.sin(kart.yaw), 0, Math.cos(kart.yaw));
-          pos.add(fwd.multiplyScalar(-2));
+          pos.x -= Math.sin(kart.yaw) * 2;
+          pos.z -= Math.cos(kart.yaw) * 2;
 
           const geo = new THREE.PlaneGeometry(2, 2);
           const mat = new THREE.MeshBasicMaterial({
@@ -39,7 +41,7 @@ export const NapalmTrail = {
           mesh.position.copy(pos);
           scene.add(mesh);
 
-          trailSegments.push({ mesh, position: pos, lifeTime: 8 });
+          trailSegments.push({ mesh, position: mesh.position, lifeTime: 8 });
         }
 
         // Check opponents touching fire

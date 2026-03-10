@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getCharacter, getCharacterIds } from '../characters/index.js';
 import { getCircuit } from '../circuits/index.js';
 import { KartController } from './KartController.js';
@@ -22,6 +23,8 @@ import { getTrackWidthAtSegment } from '../utils/TrackWidth.js';
 let animFrameId = null;
 let raceCleanup = null;
 let shaderUniforms = []; // all time-based shader uniforms to update each frame
+let _fogOriginals = { near: 150, far: 400 }; // saved fog values for toggle
+let _fogEnabled = true;
 let volcanoParticles = []; // { points, velocities, origins, type } for animated volcano effects
 
 export async function startRace(config) {
@@ -82,8 +85,9 @@ export async function startRace(config) {
     humanCameras.push(renderer.camera);
   }
 
-  // Rearview mirror camera
-  const rearviewCam = new THREE.PerspectiveCamera(95, 4, 0.1, 300);
+  // Rearview mirror camera (short far plane — only nearby karts matter)
+  const rearviewCam = new THREE.PerspectiveCamera(95, 4, 0.1, 100);
+  let rearviewFrameCounter = 0;
 
   // Create human karts
   for (let i = 0; i < humanCount; i++) {
@@ -203,6 +207,10 @@ export async function startRace(config) {
   }
 
   let lastTime = performance.now();
+  const _hudData = {
+    position: 1, lap: 0, maxLaps: circuit.defaultLaps, timer: 0,
+    speed: 0, itemName: '', countdown: undefined, participants, waypoints: circuit.waypoints
+  };
 
   function raceLoop(now) {
     const delta = Math.min((now - lastTime) / 1000, 1 / 20);
@@ -348,8 +356,9 @@ export async function startRace(config) {
 
     renderer.render();
 
-    // Rearview mirror render (hide weather particles to avoid oversized appearance)
-    if (humanKarts.length > 0) {
+    // Rearview mirror render (every 3rd frame, hide weather particles)
+    rearviewFrameCounter++;
+    if (humanKarts.length > 0 && rearviewFrameCounter % 3 === 0) {
       const kart = humanKarts[0];
       rearviewCam.position.set(kart.position.x, kart.position.y + 1.6, kart.position.z);
       _rearviewLookAt.set(
@@ -371,17 +380,13 @@ export async function startRace(config) {
 
     // HUD (show P1 data for now, multi-player HUD is per-viewport overlay)
     const pData = raceManager.getParticipantData('player-0');
-    updateHUD({
-      position: raceManager.getPosition('player-0'),
-      lap: pData?.lapCount || 0,
-      maxLaps: circuit.defaultLaps,
-      timer: raceManager.timer,
-      speed: humanKarts[0].speed,
-      itemName: itemSystem.getItemName(itemSystem.getHeldItem('player-0')),
-      countdown: raceManager.isCountdown() ? raceManager.countdown : undefined,
-      participants,
-      waypoints: circuit.waypoints
-    });
+    _hudData.position = raceManager.getPosition('player-0');
+    _hudData.lap = pData?.lapCount || 0;
+    _hudData.timer = raceManager.timer;
+    _hudData.speed = humanKarts[0].speed;
+    _hudData.itemName = itemSystem.getItemName(itemSystem.getHeldItem('player-0'));
+    _hudData.countdown = raceManager.isCountdown() ? raceManager.countdown : undefined;
+    updateHUD(_hudData);
 
     audioEngine.updateMusicContext(
       raceManager.getPosition('player-0'),
@@ -510,6 +515,58 @@ const _turretRingGeo = new THREE.TorusGeometry(0.3, 0.04, 6, 10);
 const _thruNozzleGeo = new THREE.ConeGeometry(0.2, 0.4, 8);
 const _energyRingGeo = new THREE.TorusGeometry(0.5, 0.03, 6, 12);
 const _sideVentGeo = new THREE.BoxGeometry(0.08, 0.15, 0.4);
+
+/**
+ * Merge all meshes in a kart group by material color to reduce draw calls.
+ * ~40-60 meshes per kart → ~5-10 merged meshes (one per unique color).
+ */
+const _mergeMatrix = new THREE.Matrix4();
+function mergeKartGroup(renderer, group) {
+  const byColor = new Map(); // hex -> [BufferGeometry]
+
+  // Collect all meshes, handling both direct Mesh children and Group wrappers
+  for (const child of group.children) {
+    const meshes = [];
+    if (child.isMesh) {
+      meshes.push(child);
+    } else if (child.isGroup) {
+      // Preview renderer wraps each mesh in a Group (main + outline)
+      for (const sub of child.children) {
+        if (sub.isMesh && sub.material.side !== THREE.BackSide) meshes.push(sub);
+      }
+    }
+    for (const mesh of meshes) {
+      if (!mesh.geometry || !mesh.material.color) continue;
+      const hex = mesh.material.color.getHex();
+      if (!byColor.has(hex)) byColor.set(hex, []);
+      const geo = mesh.geometry.clone();
+      // Build world matrix from mesh + its parent (if in a sub-group)
+      mesh.updateMatrix();
+      if (mesh.parent !== group) {
+        mesh.parent.updateMatrix();
+        _mergeMatrix.copy(mesh.parent.matrix).multiply(mesh.matrix);
+      } else {
+        _mergeMatrix.copy(mesh.matrix);
+      }
+      geo.applyMatrix4(_mergeMatrix);
+      byColor.get(hex).push(geo);
+    }
+  }
+
+  // Remove all old children
+  while (group.children.length) group.remove(group.children[0]);
+
+  // Create one merged mesh per color
+  for (const [hex, geos] of byColor) {
+    const merged = geos.length > 1 ? mergeGeometries(geos, false) : geos[0];
+    if (!merged) continue;
+    const mesh = renderer.createToonMesh(merged, hex);
+    group.add(mesh);
+  }
+
+  group.castShadow = true;
+  return group;
+}
 
 export function createKartMesh(renderer, character) {
   const type = character.kartPhysicsType || 'wheeled';
@@ -745,8 +802,7 @@ function buildWheeledKart(renderer, col, acc, weight) {
     group.add(scoop);
   }
 
-  group.castShadow = true;
-  return group;
+  return mergeKartGroup(renderer, group);
 }
 
 function buildHoverKart(renderer, col, acc) {
@@ -872,8 +928,7 @@ function buildHoverKart(renderer, col, acc) {
     }
   }
 
-  group.castShadow = true;
-  return group;
+  return mergeKartGroup(renderer, group);
 }
 
 function buildTrackedKart(renderer, col, acc, weight) {
@@ -1023,8 +1078,7 @@ function buildTrackedKart(renderer, col, acc, weight) {
     }
   }
 
-  group.castShadow = true;
-  return group;
+  return mergeKartGroup(renderer, group);
 }
 
 function buildHybridKart(renderer, col, acc) {
@@ -1199,8 +1253,7 @@ function buildHybridKart(renderer, col, acc) {
   scoop.position.set(0, 0.95, 0.6);
   group.add(scoop);
 
-  group.castShadow = true;
-  return group;
+  return mergeKartGroup(renderer, group);
 }
 
 function getThemeBiome(theme) {
@@ -1264,6 +1317,9 @@ function buildTrack(renderer, circuit) {
   } else {
     fogColor = new THREE.Vector3(0.4, 0.47, 0.53); fogNear = 150; fogFar = 400;
   }
+
+  // Save original fog values for toggle
+  _fogOriginals = { near: fogNear, far: fogFar };
 
   // Road shader uniforms (shared across all segments)
   const roadUniforms = {
@@ -1353,6 +1409,27 @@ function buildTrack(renderer, circuit) {
 
 // --- Track elements: ramps, boosts, slowdowns ---
 
+/** Merge children of a Group by material color. Works with any material type. */
+function mergeGroupChildren(group) {
+  const byColor = new Map();
+  for (const child of group.children) {
+    if (!child.isMesh || !child.geometry || !child.material) continue;
+    const key = child.material.color.getHex();
+    if (!byColor.has(key)) byColor.set(key, { mat: child.material, geos: [] });
+    const geo = child.geometry.clone();
+    child.updateMatrix();
+    geo.applyMatrix4(child.matrix);
+    byColor.get(key).geos.push(geo);
+  }
+  while (group.children.length) group.remove(group.children[0]);
+  for (const { mat, geos } of byColor.values()) {
+    const merged = geos.length > 1 ? mergeGeometries(geos, false) : geos[0];
+    if (!merged) continue;
+    group.add(new THREE.Mesh(merged, mat));
+  }
+  return group;
+}
+
 function buildTrackElements(renderer, circuit, waypoints) {
   const elements = [];
   const n = waypoints.length;
@@ -1393,6 +1470,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
       rampGroup.add(stripe);
     }
 
+    mergeGroupChildren(rampGroup);
     rampGroup.position.set(wp.x, wp.y, wp.z);
     rampGroup.rotation.y = yaw;
     renderer.scene.add(rampGroup);
@@ -1438,6 +1516,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
       }
     }
 
+    mergeGroupChildren(chevronGroup);
     chevronGroup.position.set(wp.x, wp.y, wp.z);
     chevronGroup.lookAt(next.x, next.y, next.z);
     renderer.scene.add(chevronGroup);
@@ -1481,6 +1560,7 @@ function buildTrackElements(renderer, circuit, waypoints) {
       slowGroup.add(strip);
     }
 
+    mergeGroupChildren(slowGroup);
     slowGroup.position.set(wp.x, wp.y, wp.z);
     slowGroup.rotation.y = yaw;
     renderer.scene.add(slowGroup);
@@ -1573,8 +1653,8 @@ function checkTrackElements(elements, participants, delta) {
             // Raise speed cap
             k.speedMultiplier = Math.max(k.speedMultiplier, 1 + (mult - 1) * t);
             // Active forward push
-            const fwd = new THREE.Vector3(Math.sin(k.yaw), 0, Math.cos(k.yaw));
-            k.velocity.add(fwd.multiplyScalar(boostForce * t * dt));
+            k._tempVec.set(Math.sin(k.yaw), 0, Math.cos(k.yaw));
+            k.velocity.add(k._tempVec.multiplyScalar(boostForce * t * dt));
           },
           onEnd() {}
         });
@@ -1585,13 +1665,12 @@ function checkTrackElements(elements, participants, delta) {
         kart.speed *= el.speedFactor;
         kart.velocity.x *= el.speedFactor;
         kart.velocity.z *= el.speedFactor;
-        kart.activeEffects = kart.activeEffects.filter(e => {
-          if (e.keepMomentum) { // boost effects use keepMomentum
-            if (e.onEnd) e.onEnd(kart);
-            return false;
+        for (let ei = kart.activeEffects.length - 1; ei >= 0; ei--) {
+          if (kart.activeEffects[ei].keepMomentum) {
+            if (kart.activeEffects[ei].onEnd) kart.activeEffects[ei].onEnd(kart);
+            kart.activeEffects.splice(ei, 1);
           }
-          return true;
-        });
+        }
         cooldowns.set(cooldownKey, 1.5);
       }
     }
@@ -1871,11 +1950,62 @@ const _volcanoConeGeo = new THREE.ConeGeometry(1, 1.6, 8);
 const _volcanoCraterGeo = new THREE.TorusGeometry(0.35, 0.12, 6, 8);
 const _volcanoRimGeo = new THREE.CylinderGeometry(0.4, 0.55, 0.2, 8);
 
+/**
+ * Collects scenery mesh instances during building, then flushes them as
+ * InstancedMesh objects (one per unique geometry) with per-instance color.
+ * Reduces ~160+ individual draw calls to ~15-20.
+ */
+const _flushMatrix = new THREE.Matrix4();
+const _flushQuat = new THREE.Quaternion();
+const _flushColor = new THREE.Color();
+
+class SceneryCollector {
+  constructor() {
+    this._byColor = new Map(); // colorHex → [cloned+transformed BufferGeometry]
+    this.scene = { add: (proxy) => this._record(proxy) };
+  }
+
+  createToonMesh(geometry, color, _options = {}) {
+    return {
+      _geo: geometry,
+      _color: color,
+      position: new THREE.Vector3(),
+      rotation: new THREE.Euler(),
+      scale: new THREE.Vector3(1, 1, 1),
+      children: [],
+      material: null
+    };
+  }
+
+  _record(proxy) {
+    if (!proxy._geo) return;
+    const hex = proxy._color | 0;
+    if (!this._byColor.has(hex)) this._byColor.set(hex, []);
+    const geo = proxy._geo.clone();
+    _flushQuat.setFromEuler(proxy.rotation);
+    _flushMatrix.compose(proxy.position, _flushQuat, proxy.scale);
+    geo.applyMatrix4(_flushMatrix);
+    this._byColor.get(hex).push(geo);
+  }
+
+  flush(renderer) {
+    for (const [hex, geos] of this._byColor) {
+      if (geos.length === 0) continue;
+      const merged = geos.length > 1 ? mergeGeometries(geos, false) : geos[0];
+      if (!merged) continue;
+      const mesh = renderer.createToonMesh(merged, hex);
+      renderer.scene.add(mesh);
+    }
+    this._byColor.clear();
+  }
+}
+
 function buildScenery(renderer, circuit, waypoints) {
   const trackWidth = circuit.trackWidth || 12;
   const theme = circuit.theme?.toLowerCase() || '';
   const p = circuit.palette || {};
   const rng = mulberry32(circuit.id?.length || 7);
+  const collector = new SceneryCollector();
 
   // Place props along the track sides
   for (let i = 0; i < waypoints.length; i += 2) {
@@ -1900,7 +2030,7 @@ function buildScenery(renderer, circuit, waypoints) {
       const distRatio = Math.min(1, (dist - baseDist) / 20);
       const y = curr.y * (1 - distRatio * 0.85);
 
-      placeSceneryProp(renderer, theme, p, x, y, z, rng);
+      placeSceneryProp(collector, theme, p, x, y, z, rng);
     }
   }
 
@@ -1914,7 +2044,7 @@ function buildScenery(renderer, circuit, waypoints) {
     const dist = 100 + rng() * 200;
     const x = center.x + Math.cos(angle) * dist;
     const z = center.z + Math.sin(angle) * dist;
-    placeSceneryProp(renderer, theme, p, x, -1, z, rng);
+    placeSceneryProp(collector, theme, p, x, -1, z, rng);
   }
 
   // Volcano mountains (distant only, lava biome)
@@ -1926,23 +2056,19 @@ function buildScenery(renderer, circuit, waypoints) {
       const x = center.x + Math.cos(angle) * dist;
       const z = center.z + Math.sin(angle) * dist;
       const vScale = 8 + rng() * 16;
-      const cone = renderer.createToonMesh(_volcanoConeGeo, 0x3a2a1a, { outlineWidth: 0.03 });
+      const cone = collector.createToonMesh(_volcanoConeGeo, 0x3a2a1a);
       cone.position.set(x, vScale * 0.8, z);
       cone.scale.set(vScale, vScale, vScale);
-      renderer.scene.add(cone);
-      const rim = renderer.createToonMesh(_volcanoRimGeo, 0x2a1a0a, { outlineWidth: 0.02 });
+      collector.scene.add(cone);
+      const rim = collector.createToonMesh(_volcanoRimGeo, 0x2a1a0a);
       rim.position.set(x, vScale * 1.58, z);
       rim.scale.set(vScale * 0.7, vScale * 0.5, vScale * 0.7);
-      renderer.scene.add(rim);
-      const crater = renderer.createToonMesh(_volcanoCraterGeo, 0xff3300, { outlineWidth: 0 });
+      collector.scene.add(rim);
+      const crater = collector.createToonMesh(_volcanoCraterGeo, 0xff3300);
       crater.position.set(x, vScale * 1.55, z);
       crater.rotation.x = Math.PI / 2;
       crater.scale.set(vScale * 0.6, vScale * 0.6, vScale * 0.4);
-      if (crater.children[0]?.material) {
-        crater.children[0].material.emissive = new THREE.Color(0xff2200);
-        crater.children[0].material.emissiveIntensity = 0.8;
-      }
-      renderer.scene.add(crater);
+      collector.scene.add(crater);
 
       // Lava eruption particles
       const lavaCount = 30;
@@ -1974,6 +2100,9 @@ function buildScenery(renderer, circuit, waypoints) {
       volcanoParticles.push({ points: smokePoints, velocities: smokeVel, origin: { x, y: craterY, z }, scale: vScale, type: 'smoke', count: smokeCount });
     }
   }
+
+  // Flush all collected scenery instances as InstancedMesh objects
+  collector.flush(renderer);
 }
 
 function _initLavaParticle(pos, vel, i, ox, oy, oz, scale) {
@@ -2604,4 +2733,14 @@ function _removeGunnerHUD() {
 export function cleanupRace() {
   _removeGunnerHUD();
   if (raceCleanup) raceCleanup();
+}
+
+export function setFogEnabled(enabled) {
+  _fogEnabled = enabled;
+  const near = enabled ? _fogOriginals.near : 99999;
+  const far = enabled ? _fogOriginals.far : 100000;
+  for (const u of shaderUniforms) {
+    if (u.fogNear) u.fogNear.value = near;
+    if (u.fogFar) u.fogFar.value = far;
+  }
 }

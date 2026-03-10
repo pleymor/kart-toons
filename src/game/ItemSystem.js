@@ -79,6 +79,11 @@ const TRAP_TRIGGER_SFX = {
   'wall': 'slam'
 };
 
+// Reusable temp vectors to avoid per-frame allocations
+const _tmpVec3A = new THREE.Vector3();
+const _tmpVec3B = new THREE.Vector3();
+const _tmpColor = new THREE.Color(0x331100);
+
 // Shared geometries for item meshes
 const _crateGeo = new THREE.BoxGeometry(1.4, 1.4, 1.4);
 const _crateInnerGeo = new THREE.BoxGeometry(1.05, 1.05, 1.05);
@@ -320,8 +325,8 @@ export class ItemSystem {
             }
             k.speedMultiplier = Math.max(k.speedMultiplier, 1 + (nitroMult - 1) * t);
             // Active forward push
-            const fwd = new THREE.Vector3(Math.sin(k.yaw), 0, Math.cos(k.yaw));
-            k.velocity.add(fwd.multiplyScalar(boostForce * t * dt));
+            _tmpVec3A.set(Math.sin(k.yaw), 0, Math.cos(k.yaw));
+            k.velocity.add(_tmpVec3A.multiplyScalar(boostForce * t * dt));
           },
           onEnd() {}
         });
@@ -421,8 +426,8 @@ export class ItemSystem {
               if (p.id === user.id) continue;
               const d = p.kartController.position.distanceTo(kart.position);
               if (d < 3.5 && !p.kartController.phaseGhost) {
-                const pushDir = p.kartController.position.clone().sub(kart.position).normalize();
-                p.kartController.applyKnockback(pushDir, 20);
+                _tmpVec3A.copy(p.kartController.position).sub(kart.position).normalize();
+                p.kartController.applyKnockback(_tmpVec3A, 20);
               }
             }
           }
@@ -691,15 +696,15 @@ export class ItemSystem {
 
   _findNearestAhead(user) {
     const userPos = user.kartController.position;
-    const forward = new THREE.Vector3(Math.sin(user.kartController.yaw), 0, Math.cos(user.kartController.yaw));
+    _tmpVec3A.set(Math.sin(user.kartController.yaw), 0, Math.cos(user.kartController.yaw));
     let nearest = null;
     let nearestDist = Infinity;
 
     for (const p of this.participants) {
       if (p.id === user.id) continue;
-      const diff = p.kartController.position.clone().sub(userPos);
-      diff.y = 0;
-      const dot = diff.normalize().dot(forward);
+      _tmpVec3B.copy(p.kartController.position).sub(userPos);
+      _tmpVec3B.y = 0;
+      const dot = _tmpVec3B.normalize().dot(_tmpVec3A);
       if (dot > 0.3) { // must be ahead
         const dist = userPos.distanceTo(p.kartController.position);
         if (dist < nearestDist) {
@@ -739,7 +744,7 @@ export class ItemSystem {
       timer: 5,
       update: (delta) => {
         vel.y -= gravity * delta;
-        pos.add(vel.clone().multiplyScalar(delta));
+        pos.add(_tmpVec3A.copy(vel).multiplyScalar(delta));
         mesh.position.copy(pos);
         // Destroy on ground contact
         if (pos.y < (ownerKart._groundPlaneY ?? -2)) {
@@ -755,9 +760,10 @@ export class ItemSystem {
             // Knockback: E = mv², force proportional to mass and ball speed squared
             const ballSpeed = vel.length();
             const energy = mass * ballSpeed * ballSpeed * 0.02;
-            p.kartController.applyKnockback(vel.clone().normalize(), energy);
+            _tmpVec3B.copy(vel).normalize();
+            p.kartController.applyKnockback(_tmpVec3B, energy);
             // Explosion VFX
-            this._spawnImpactExplosion(pos.clone(), scale);
+            this._spawnImpactExplosion(_tmpVec3A.copy(pos), scale);
             // SFX
             const audio = getAudioEngine();
             if (audio) audio.playSFX3D('collision', pos, this.listenerPos);
@@ -815,7 +821,7 @@ export class ItemSystem {
         const s = (1 + t * 3) * size;
         explosionMesh.scale.setScalar(s);
         explosionMat.opacity = 0.8 * (1 - t);
-        explosionMesh.material.color.lerp(new THREE.Color(0x331100), delta * 3);
+        explosionMesh.material.color.lerp(_tmpColor, delta * 3);
         // Sparks
         const positions = sparkGeo.attributes.position.array;
         for (let i = 0; i < sparkCount; i++) {
@@ -853,7 +859,7 @@ export class ItemSystem {
       mesh,
       timer: 5,
       update: (delta) => {
-        pos.add(dir.clone().multiplyScalar(speed * delta));
+        pos.add(_tmpVec3A.copy(dir).multiplyScalar(speed * delta));
         mesh.position.copy(pos);
 
         // Check hits

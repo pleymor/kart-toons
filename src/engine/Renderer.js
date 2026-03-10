@@ -1,5 +1,51 @@
 import * as THREE from 'three';
 
+// ---- Post-process outline shaders (Sobel edge detection on depth + normals) ----
+const _outlineVertexShader = `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position, 1.0);
+}`;
+
+// Outline-only overlay: reads depth, outputs black edges with alpha
+const _outlineFragmentShader = `
+#include <packing>
+uniform sampler2D tDepth;
+uniform vec2 resolution;
+uniform float cameraNear;
+uniform float cameraFar;
+uniform vec3 outlineColor;
+uniform float depthThreshold;
+varying vec2 vUv;
+
+float readDepth(vec2 coord) {
+  float fragCoordZ = texture2D(tDepth, coord).x;
+  float viewZ = perspectiveDepthToViewZ(fragCoordZ, cameraNear, cameraFar);
+  return viewZToOrthographicDepth(viewZ, cameraNear, cameraFar);
+}
+
+void main() {
+  vec2 texel = 1.0 / resolution;
+
+  float d00 = readDepth(vUv + vec2(-texel.x, -texel.y));
+  float d10 = readDepth(vUv + vec2(0.0, -texel.y));
+  float d20 = readDepth(vUv + vec2(texel.x, -texel.y));
+  float d01 = readDepth(vUv + vec2(-texel.x, 0.0));
+  float d21 = readDepth(vUv + vec2(texel.x, 0.0));
+  float d02 = readDepth(vUv + vec2(-texel.x, texel.y));
+  float d12 = readDepth(vUv + vec2(0.0, texel.y));
+  float d22 = readDepth(vUv + vec2(texel.x, texel.y));
+
+  float gx = d00 + 2.0 * d01 + d02 - d20 - 2.0 * d21 - d22;
+  float gy = d00 + 2.0 * d10 + d20 - d02 - 2.0 * d12 - d22;
+  float edge = sqrt(gx * gx + gy * gy);
+
+  float outline = smoothstep(depthThreshold * 0.5, depthThreshold, edge);
+
+  gl_FragColor = vec4(outlineColor, outline);
+}`;
+
 const QUALITY_PRESETS = {
   low: { pixelRatio: 0.5, shadowMapSize: 512, shadows: false, particles: 'reduced' },
   medium: { pixelRatio: 0.75, shadowMapSize: 1024, shadows: true, particles: 'normal' },
@@ -70,6 +116,41 @@ export class Renderer {
     // Low ambient fill
     this.ambient = new THREE.AmbientLight(0x606070, 0.8);
     this.scene.add(this.ambient);
+
+    // Depth-only RT for outline detection
+    this._sceneRT = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+      depthTexture: new THREE.DepthTexture(window.innerWidth, window.innerHeight),
+      depthBuffer: true
+    });
+    this._sceneRT.depthTexture.format = THREE.DepthFormat;
+    this._sceneRT.depthTexture.type = THREE.UnsignedIntType;
+    // Override material for cheap depth-only pass (no fragment shading)
+    this._depthOnlyMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+
+    this._outlineMaterial = new THREE.ShaderMaterial({
+      vertexShader: _outlineVertexShader,
+      fragmentShader: _outlineFragmentShader,
+      uniforms: {
+        tDepth: { value: this._sceneRT.depthTexture },
+        resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        cameraNear: { value: 0.1 },
+        cameraFar: { value: 1000 },
+        outlineColor: { value: new THREE.Color(0x000000) },
+        depthThreshold: { value: 0.002 }
+      },
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      blending: THREE.NormalBlending
+    });
+
+    this._outlineQuad = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 2),
+      this._outlineMaterial
+    );
+    this._outlineScene = new THREE.Scene();
+    this._outlineScene.add(this._outlineQuad);
+    this._outlineCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
     // Split-screen viewports
     this.viewports = [{ camera: this.camera, x: 0, y: 0, w: 1, h: 1 }];
@@ -232,20 +313,11 @@ export class Renderer {
   }
 
   createToonMesh(geometry, color, options = {}) {
-    const group = new THREE.Group();
-
-    const mainMesh = new THREE.Mesh(geometry, this.createToonMaterial(color, options));
-    mainMesh.castShadow = true;
-    mainMesh.receiveShadow = true;
-    group.add(mainMesh);
-
-    // Outline via inverted hull
-    if (options.outlineWidth > 0) {
-      const outlineMesh = new THREE.Mesh(geometry, this.createOutlineMaterial(options.outlineWidth));
-      group.add(outlineMesh);
-    }
-
-    return group;
+    // Single mesh — outlines are handled by post-process edge detection
+    const mesh = new THREE.Mesh(geometry, this.createToonMaterial(color, options));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
   }
 
   render() {
@@ -260,14 +332,41 @@ export class Renderer {
       const vpW = Math.floor(vp.w * w);
       const vpH = Math.floor(vp.h * h);
 
-      this.renderer.setViewport(x, y, vpW, vpH);
-      this.renderer.setScissor(x, y, vpW, vpH);
-      this.renderer.setScissorTest(true);
-
       vp.camera.aspect = vpW / vpH;
       vp.camera.updateProjectionMatrix();
 
+      // 1) Render scene directly to canvas (correct colors)
+      this.renderer.setRenderTarget(null);
+      this.renderer.setViewport(x, y, vpW, vpH);
+      this.renderer.setScissor(x, y, vpW, vpH);
+      this.renderer.setScissorTest(true);
       this.renderer.render(this.scene, vp.camera);
+
+      // 2) Depth-only pass to RT (cheap, no fragment shading)
+      const rt = this._sceneRT;
+      if (rt.width !== vpW || rt.height !== vpH) {
+        rt.setSize(vpW, vpH);
+      }
+      this.scene.overrideMaterial = this._depthOnlyMaterial;
+      this.renderer.setRenderTarget(rt);
+      this.renderer.setViewport(0, 0, vpW, vpH);
+      this.renderer.setScissor(0, 0, vpW, vpH);
+      this.renderer.setScissorTest(false);
+      this.renderer.clear();
+      this.renderer.render(this.scene, vp.camera);
+      this.scene.overrideMaterial = null;
+
+      // 3) Overlay outlines using depth from RT
+      this.renderer.setRenderTarget(null);
+      this.renderer.setViewport(x, y, vpW, vpH);
+      this.renderer.setScissor(x, y, vpW, vpH);
+      this.renderer.setScissorTest(true);
+      const uniforms = this._outlineMaterial.uniforms;
+      uniforms.tDepth.value = rt.depthTexture;
+      uniforms.resolution.value.set(vpW, vpH);
+      uniforms.cameraNear.value = vp.camera.near;
+      uniforms.cameraFar.value = vp.camera.far;
+      this.renderer.render(this._outlineScene, this._outlineCamera);
     }
 
     // FPS tracking
@@ -306,6 +405,7 @@ export class Renderer {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this._sceneRT.setSize(w, h);
   }
 
   dispose() {

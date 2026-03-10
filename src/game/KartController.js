@@ -125,7 +125,7 @@ export class KartController {
       const speedRatio = this.speed / (this.maxSpeed * this.speedMultiplier * this.boostMultiplier || 1);
       const accelFalloff = Math.max(0.05, 1.0 - speedRatio * 0.8);
       const accel = this.accelForce * throttle * this.surfaceFriction * Math.max(0.2, slopeFactor) * accelFalloff;
-      this.velocity.add(this._forward.clone().multiplyScalar(accel * delta));
+      this.velocity.add(this._tempVec.copy(this._forward).multiplyScalar(accel * delta));
     } else {
       // Reset throttle time when not accelerating
       this._throttleTime = Math.max(0, this._throttleTime - delta * 3);
@@ -135,7 +135,7 @@ export class KartController {
     // Gravity along slope (push kart downhill even without throttle)
     if (this.grounded && Math.abs(this.slopeGrade) > 0.01) {
       const gravityForce = -this.slopeGrade * 20;
-      this.velocity.add(this._forward.clone().multiplyScalar(gravityForce * delta));
+      this.velocity.add(this._tempVec.copy(this._forward).multiplyScalar(gravityForce * delta));
     }
 
     // Braking
@@ -158,9 +158,9 @@ export class KartController {
     const gripFactor = Math.min(grip * delta * 8, 1.0);
     const currentSpeed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
     if (currentSpeed > 0.1) {
-      const targetVel = this._forward.clone().multiplyScalar(currentSpeed);
-      this.velocity.x += (targetVel.x - this.velocity.x) * gripFactor;
-      this.velocity.z += (targetVel.z - this.velocity.z) * gripFactor;
+      this._tempVec.copy(this._forward).multiplyScalar(currentSpeed);
+      this.velocity.x += (this._tempVec.x - this.velocity.x) * gripFactor;
+      this.velocity.z += (this._tempVec.z - this.velocity.z) * gripFactor;
     }
 
     // Apply drag
@@ -178,7 +178,7 @@ export class KartController {
     }
 
     // Move
-    this.position.add(this.velocity.clone().multiplyScalar(delta));
+    this.position.add(this._tempVec.copy(this.velocity).multiplyScalar(delta));
 
     // Off-road: land on ground plane, then respawn after delay
     if (this.falling) {
@@ -399,8 +399,8 @@ export class KartController {
 
   applyKnockback(direction, force) {
     this._throttleTime = 0;
-    const knockback = direction.clone().multiplyScalar(force / Math.max(this.weightFactor, 1));
-    this.velocity.add(knockback);
+    this._tempVec.copy(direction).multiplyScalar(force / Math.max(this.weightFactor, 1));
+    this.velocity.add(this._tempVec);
   }
 
   setPosition(x, y, z) {

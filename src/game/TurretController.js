@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 
+const _tmpDir = new THREE.Vector3();
+const _tmpPos = new THREE.Vector3();
+
 export class TurretController {
   constructor(kart) {
     this.kart = kart;
@@ -57,20 +60,19 @@ export class TurretController {
     // Compute world-space fire direction from turret orientation + kart rotation
     const kartYaw = this.kart.yaw;
     const totalYaw = kartYaw + this.yaw;
-    const dir = new THREE.Vector3(
+    return _tmpDir.set(
       Math.sin(totalYaw) * Math.cos(this.pitch),
       Math.sin(this.pitch),
       Math.cos(totalYaw) * Math.cos(this.pitch)
-    );
-    return dir.normalize();
+    ).normalize();
   }
 
   getWorldPosition() {
-    const pos = this.kart.position.clone();
-    pos.y += 1.3;
-    pos.x -= Math.sin(this.kart.yaw) * 1.2;
-    pos.z -= Math.cos(this.kart.yaw) * 1.2;
-    return pos;
+    _tmpPos.copy(this.kart.position);
+    _tmpPos.y += 1.3;
+    _tmpPos.x -= Math.sin(this.kart.yaw) * 1.2;
+    _tmpPos.z -= Math.cos(this.kart.yaw) * 1.2;
+    return _tmpPos;
   }
 
   attachTo(kartGroup) {

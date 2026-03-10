@@ -56,6 +56,7 @@ export class InputManager {
     this._mouseButtons = new Set();
     this._mouseDeltaX = 0;
     this._mouseDeltaY = 0;
+    this._mouseDelta = { dx: 0, dy: 0 };
     this._pointerLocked = false;
 
     this._onMouseMove = this._onMouseMove.bind(this);
@@ -140,11 +141,11 @@ export class InputManager {
   }
 
   consumeMouseDelta() {
-    const dx = this._mouseDeltaX;
-    const dy = this._mouseDeltaY;
+    this._mouseDelta.dx = this._mouseDeltaX;
+    this._mouseDelta.dy = this._mouseDeltaY;
     this._mouseDeltaX = 0;
     this._mouseDeltaY = 0;
-    return { dx, dy };
+    return this._mouseDelta;
   }
 
   update() {
@@ -157,7 +158,8 @@ export class InputManager {
     for (const k of this._prevKeys) {
       if (!this._keysDown.has(k)) this._keysReleased.add(k);
     }
-    this._prevKeys = new Set(this._keysDown);
+    this._prevKeys.clear();
+    for (const k of this._keysDown) this._prevKeys.add(k);
 
     // Update each player
     for (const player of this.players) {

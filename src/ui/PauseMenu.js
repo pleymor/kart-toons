@@ -1,4 +1,5 @@
 import { setPaused, getPaused, getRenderer, getAudioEngine, getInputManager } from '../main.js';
+import { setFogEnabled } from '../game/RaceSetup.js';
 import { Storage } from '../utils/Storage.js';
 
 let pauseElement = null;
@@ -195,6 +196,8 @@ export function applySettings(settings) {
     if (settings.quality) renderer.applyQuality(settings.quality);
     if (settings.showFPS !== undefined) renderer.showFPS = settings.showFPS;
   }
+  if (settings.fog !== undefined) setFogEnabled(settings.fog);
+
   if (audio) {
     if (settings.masterVolume !== undefined) audio.setMasterVolume(settings.masterVolume);
     if (settings.musicVolume !== undefined) audio.setMusicVolume(settings.musicVolume);
@@ -436,6 +439,7 @@ function buildVideoSection(s) {
     ${select('Post-Processing', 'postProcessing', s.postProcessing || 'full', [
       { value: 'off', label: 'Off' }, { value: 'toon-only', label: 'Cell-Shading Only' }, { value: 'full', label: 'Full' }
     ])}
+    ${toggle('Fog', 'fog', s.fog !== false)}
     ${toggle('Show FPS', 'showFPS', s.showFPS)}
   `;
 }

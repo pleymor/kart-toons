@@ -2,6 +2,17 @@ let hudElement = null;
 let minimapCanvas = null;
 let minimapCtx = null;
 
+// Cached DOM refs (avoid querySelector per frame)
+let _countdownEl = null;
+let _posEl = null;
+let _lapEl = null;
+let _timerEl = null;
+let _speedEl = null;
+let _itemEl = null;
+
+// Cached minimap bounds (waypoints don't change during race)
+let _minimapBounds = null;
+
 export function show(container) {
   container.innerHTML = `
     <div id="hud" style="
@@ -65,6 +76,15 @@ export function show(container) {
   hudElement = container.querySelector('#hud');
   minimapCanvas = container.querySelector('#hud-minimap');
   minimapCtx = minimapCanvas?.getContext('2d');
+
+  // Cache all DOM refs once
+  _countdownEl = hudElement.querySelector('#hud-countdown');
+  _posEl = hudElement.querySelector('#hud-position');
+  _lapEl = hudElement.querySelector('#hud-lap');
+  _timerEl = hudElement.querySelector('#hud-timer');
+  _speedEl = hudElement.querySelector('#hud-speed');
+  _itemEl = hudElement.querySelector('#hud-item');
+  _minimapBounds = null;
 }
 
 const POSITION_SUFFIXES = ['st', 'nd', 'rd', 'th', 'th', 'th', 'th', 'th'];
@@ -75,39 +95,34 @@ export function updateHUD(data) {
   const { position, lap, maxLaps, timer, speed, itemName, countdown, participants, waypoints } = data;
 
   // Countdown
-  const countdownEl = hudElement.querySelector('#hud-countdown');
   if (countdown !== undefined && countdown > 0) {
-    countdownEl.style.display = 'block';
-    countdownEl.textContent = countdown;
+    _countdownEl.style.display = 'block';
+    _countdownEl.textContent = countdown;
   } else if (countdown === 0) {
-    countdownEl.style.display = 'block';
-    countdownEl.textContent = 'GO!';
-    setTimeout(() => { countdownEl.style.display = 'none'; }, 1000);
+    _countdownEl.style.display = 'block';
+    _countdownEl.textContent = 'GO!';
+    setTimeout(() => { _countdownEl.style.display = 'none'; }, 1000);
   } else {
-    countdownEl.style.display = 'none';
+    _countdownEl.style.display = 'none';
   }
 
   // Position
-  const posEl = hudElement.querySelector('#hud-position');
-  if (posEl) {
-    posEl.textContent = `${position}${POSITION_SUFFIXES[position - 1] || 'th'}`;
+  if (_posEl) {
+    _posEl.textContent = `${position}${POSITION_SUFFIXES[position - 1] || 'th'}`;
   }
 
   // Lap
-  const lapEl = hudElement.querySelector('#hud-lap');
-  if (lapEl) lapEl.textContent = `Lap ${Math.min(lap + 1, maxLaps)}/${maxLaps}`;
+  if (_lapEl) _lapEl.textContent = `Lap ${Math.min(lap + 1, maxLaps)}/${maxLaps}`;
 
   // Timer
-  const timerEl = hudElement.querySelector('#hud-timer');
-  if (timerEl) timerEl.textContent = formatTime(timer);
+  if (_timerEl) _timerEl.textContent = formatTime(timer);
 
   // Speed
-  const speedEl = hudElement.querySelector('#hud-speed');
-  if (speedEl) speedEl.innerHTML = `${Math.round(speed * 3.6)} <span style="font-size:clamp(12px,2.5vw,14px);color:#888;">km/h</span>`;
+  if (_speedEl) _speedEl.textContent = `${Math.round(speed * 3.6)} km/h`;
 
   // Item (emoji icon)
-  const itemEl = hudElement.querySelector('#hud-item');
-  if (itemEl) {
+  if (_itemEl) {
+    const itemEl = _itemEl;
     const hasItem = itemName && itemName !== '-';
     itemEl.textContent = hasItem ? itemName : '-';
     itemEl.style.borderColor = hasItem ? '#ff4400' : '#555';
@@ -125,27 +140,29 @@ function drawMinimap(participants, waypoints) {
   const h = minimapCanvas.height;
   minimapCtx.clearRect(0, 0, w, h);
 
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  for (const wp of waypoints) {
-    if (wp.x < minX) minX = wp.x;
-    if (wp.x > maxX) maxX = wp.x;
-    if (wp.z < minZ) minZ = wp.z;
-    if (wp.z > maxZ) maxZ = wp.z;
+  if (!_minimapBounds) {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const wp of waypoints) {
+      if (wp.x < minX) minX = wp.x;
+      if (wp.x > maxX) maxX = wp.x;
+      if (wp.z < minZ) minZ = wp.z;
+      if (wp.z > maxZ) maxZ = wp.z;
+    }
+    _minimapBounds = { minX, maxX, minZ, maxZ };
   }
+  const { minX, maxX, minZ, maxZ } = _minimapBounds;
   const rangeX = maxX - minX || 1;
   const rangeZ = maxZ - minZ || 1;
   const pad = 10;
-
-  const toScreen = (x, z) => [
-    pad + ((x - minX) / rangeX) * (w - pad * 2),
-    pad + ((z - minZ) / rangeZ) * (h - pad * 2)
-  ];
+  const scaleX = (w - pad * 2) / rangeX;
+  const scaleZ = (h - pad * 2) / rangeZ;
 
   minimapCtx.strokeStyle = '#444';
   minimapCtx.lineWidth = 2;
   minimapCtx.beginPath();
   for (let i = 0; i < waypoints.length; i++) {
-    const [sx, sy] = toScreen(waypoints[i].x, waypoints[i].z);
+    const sx = pad + (waypoints[i].x - minX) * scaleX;
+    const sy = pad + (waypoints[i].z - minZ) * scaleZ;
     if (i === 0) minimapCtx.moveTo(sx, sy);
     else minimapCtx.lineTo(sx, sy);
   }
@@ -157,7 +174,8 @@ function drawMinimap(participants, waypoints) {
       const p = participants[i];
       const pos = p.kartController?.position;
       if (!pos) continue;
-      const [sx, sy] = toScreen(pos.x, pos.z);
+      const sx = pad + (pos.x - minX) * scaleX;
+      const sy = pad + (pos.z - minZ) * scaleZ;
       minimapCtx.fillStyle = p.isHuman ? '#ff4400' : '#ffffff';
       minimapCtx.beginPath();
       minimapCtx.arc(sx, sy, p.isHuman ? 4 : 3, 0, Math.PI * 2);

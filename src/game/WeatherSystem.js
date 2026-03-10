@@ -9,6 +9,7 @@ export class WeatherSystem {
     this.activeWeather = null;
     this.weatherTimer = 0;
     this.nextWeatherIn = 60 + Math.random() * 60; // 60-120s
+    this._originalFog = null; // saved scene fog before weather override
 
     // Particle system for weather effects
     this.particles = null;
@@ -61,9 +62,10 @@ export class WeatherSystem {
     // Create particle effects
     this._createParticles();
 
-    // Apply visibility
+    // Apply visibility — save original fog so we can restore it later
     if (this.activeWeather.visibilityModifier < 1.0) {
-      const fogDensity = (1.0 - this.activeWeather.visibilityModifier) * 0.02;
+      this._originalFog = this.scene.fog;
+      const fogDensity = (1.0 - this.activeWeather.visibilityModifier) * 0.006;
       this.scene.fog = new THREE.FogExp2(0x222222, fogDensity);
     }
   }
@@ -78,8 +80,9 @@ export class WeatherSystem {
       this.particles = null;
     }
 
-    // Remove fog
-    this.scene.fog = null;
+    // Restore original fog
+    this.scene.fog = this._originalFog;
+    this._originalFog = null;
   }
 
   _createParticles() {
@@ -169,6 +172,9 @@ export class WeatherSystem {
     if (this.particles) {
       this.scene.remove(this.particles);
     }
-    this.scene.fog = null;
+    if (this._originalFog) {
+      this.scene.fog = this._originalFog;
+      this._originalFog = null;
+    }
   }
 }
