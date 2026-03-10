@@ -17,6 +17,7 @@ const MENU_HTML = `
     <button class="ui-btn" data-action="crew">CREW MODE (2P)</button>
     <button class="ui-btn" data-action="online-create">ONLINE: CREATE ROOM</button>
     <button class="ui-btn" data-action="online-join">ONLINE: JOIN ROOM</button>
+    <button class="ui-btn ui-btn--secondary" data-action="test-items">TEST ITEMS</button>
     <button class="ui-btn ui-btn--secondary" data-action="settings">SETTINGS</button>
     <button class="ui-btn ui-btn--secondary" data-action="stats">STATS</button>
   </div>
@@ -59,6 +60,9 @@ export function show(container) {
         break;
       case 'crew':
         setScene('character-select', { mode: 'crew', playerCount: 1 });
+        break;
+      case 'test-items':
+        setScene('character-select', { mode: 'test-items' });
         break;
       case 'settings': {
         cleanup();

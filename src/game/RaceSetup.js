@@ -9,7 +9,7 @@ import { ItemSystem } from './ItemSystem.js';
 import { WeatherSystem } from './WeatherSystem.js';
 import { updateHUD } from '../ui/HUD.js';
 import {
-  setScene, setRaceState, setPaused, getPaused,
+  setScene, setRaceState, setPaused, getPaused, setRaceMode,
   getRenderer, getPhysics, getInputManager, getAudioEngine
 } from '../main.js';
 import { TurretController } from './TurretController.js';
@@ -152,6 +152,7 @@ export async function startRace(config) {
   const weatherSystem = new WeatherSystem(renderer.scene, circuit, renderer);
 
   // Set main.js state
+  setRaceMode(mode);
   setRaceState({
     raceManagerInstance: raceManager,
     itemSystemInstance: itemSystem,
@@ -1887,7 +1888,7 @@ function buildSkyDome(renderer, circuit, shaderUniforms) {
     time: { value: 0 },
     zenithColor: { value: new THREE.Color(sky.zenith) },
     horizonColor: { value: new THREE.Color(sky.horizon) },
-    biome: { value: theme.includes('neon') ? 3 : theme.includes('volcan') ? 1 : theme.includes('ocean') ? 2 : theme.includes('ruin') ? 4 : 0 }
+    biome: { value: theme.includes('space') ? 5 : theme.includes('neon') ? 3 : theme.includes('volcan') ? 1 : theme.includes('ocean') ? 2 : theme.includes('ruin') ? 4 : 0 }
   };
   shaderUniforms.push(skyUniforms);
 
@@ -1980,6 +1981,41 @@ function buildSkyDome(renderer, circuit, shaderUniforms) {
           // Floating runes
           float rune = step(0.99, hash(floor(dir.xz * 100.0) + floor(time * 0.5)));
           col += vec3(0.8, 0.4, 1.0) * rune * 0.4;
+        } else if (biome == 5) {
+          // Space: deep black sky with dense starfield and nebula
+          col = zenithColor * 0.15; // very dark base
+
+          // Spherical coordinates for uniform star distribution
+          float theta = atan(dir.z, dir.x);
+          float phi = asin(clamp(dir.y, -1.0, 1.0));
+          vec2 sphereUV = vec2(theta * 3.183, phi * 2.026); // ~= * 1/PI normalization scaled up
+
+          // Dense starfield — small bright points
+          vec2 starGrid = floor(sphereUV * 120.0);
+          float starVal = hash(starGrid);
+          float star = step(0.97, starVal);
+          float twinkle = sin(time * 2.0 + starVal * 30.0) * 0.3 + 0.7;
+          vec3 starColor = mix(vec3(0.8, 0.85, 1.0), vec3(1.0, 0.95, 0.8), step(0.5, hash(starGrid + 42.0)));
+          col += starColor * star * twinkle * 0.8;
+
+          // Bright stars (rarer, soft glow)
+          vec2 bigGrid = floor(sphereUV * 30.0);
+          float bigVal = hash(bigGrid);
+          float bigStar = step(0.985, bigVal);
+          float bigTwinkle = sin(time * 1.5 + bigVal * 20.0) * 0.4 + 0.6;
+          col += vec3(1.0, 1.0, 0.95) * bigStar * bigTwinkle;
+
+          // Nebula: colorful gas clouds
+          float neb1 = fbm(sphereUV * 1.5 + time * 0.003);
+          float neb2 = fbm(sphereUV * 2.0 + vec2(3.0, 1.5) + time * 0.002);
+          vec3 nebColor1 = vec3(0.3, 0.05, 0.5) * smoothstep(0.4, 0.75, neb1);
+          vec3 nebColor2 = vec3(0.05, 0.15, 0.4) * smoothstep(0.45, 0.7, neb2);
+          col += (nebColor1 + nebColor2) * 0.6;
+
+          // Distant galaxy band
+          float band = smoothstep(0.48, 0.52, h) * smoothstep(0.56, 0.52, h);
+          float bandNoise = fbm(sphereUV * 5.0) * 0.8 + 0.2;
+          col += vec3(0.2, 0.15, 0.3) * band * bandNoise * 0.4;
         } else {
           // Forest: sunny sky with fluffy clouds
           col += vec3(1.0, 0.9, 0.7) * pow(sunDot, 32.0) * 0.8; // sun

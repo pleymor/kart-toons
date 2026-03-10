@@ -1,4 +1,4 @@
-import { setPaused, getPaused, getRenderer, getAudioEngine, getInputManager } from '../main.js';
+import { setPaused, getPaused, getRenderer, getAudioEngine, getInputManager, getRaceMode, getItemSystem } from '../main.js';
 import { setFogEnabled } from '../game/RaceSetup.js';
 import { Storage } from '../utils/Storage.js';
 
@@ -117,6 +117,8 @@ export function open() {
         </div>
       </div>
 
+      ${getRaceMode() === 'test-items' ? buildItemPickerSection() : ''}
+
       <button class="ui-btn" id="restart-btn" style="margin-top:clamp(8px,2vw,12px);">RESTART RACE</button>
       <button class="ui-btn ui-btn--secondary" id="menu-btn" style="margin-top:4px;">RETURN TO MENU</button>
     </div>
@@ -160,6 +162,20 @@ export function open() {
   });
 
   _bindKeybindListeners(el);
+
+  // Item picker for test-items mode
+  if (getRaceMode() === 'test-items') {
+    el.querySelectorAll('.item-pick-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const itemId = btn.dataset.itemId;
+        const itemSystem = getItemSystem();
+        if (itemSystem) {
+          itemSystem.heldItems.set('player-0', itemId);
+        }
+        close();
+      });
+    });
+  }
 
   el.querySelector('#restart-btn').addEventListener('click', () => {
     close();
@@ -470,5 +486,58 @@ function buildAccessibilitySection(s) {
       { value: 'off', label: 'Off' }, { value: 'deuteranopia', label: 'Deuteranopia' }, { value: 'protanopia', label: 'Protanopia' }
     ])}
     ${toggle('Reduce Strobe Effects', 'reduceStrobe', s.reduceStrobe)}
+  `;
+}
+
+const TEST_ITEMS = [
+  { id: 'boost-nitro', icon: '\u{1F525}', name: 'Boost Nitro' },
+  { id: 'orbe-de-choc', icon: '\u{26A1}', name: 'Orbe de Choc' },
+  { id: 'mine-magnetique', icon: '\u{1F4A3}', name: 'Mine Magnétique' },
+  { id: 'bouclier-orbital', icon: '\u{1F6E1}', name: 'Bouclier Orbital' },
+  { id: 'nappe-de-gel', icon: '\u{2744}', name: 'Nappe de Gel' },
+  { id: 'salve-de-debris', icon: '\u{1F4A5}', name: 'Salve de Débris' },
+  { id: 'onde-emp', icon: '\u{1F300}', name: 'Onde EMP' },
+  { id: 'traqueur-de-rang', icon: '\u{1F3AF}', name: 'Traqueur de Rang' },
+  { id: 'cloak', icon: '\u{1F47B}', name: 'Cloak' },
+  { id: 'leurre', icon: '\u{1F916}', name: 'Leurre' },
+  { id: 'levitateur', icon: '\u{1F680}', name: 'Lévitateur' },
+  { id: 'teleporteur', icon: '\u{2728}', name: 'Téléporteur' },
+  { id: 'phase-ghost', icon: '\u{1F30A}', name: 'Phase Ghost' },
+  { id: 'mur-temporaire', icon: '\u{1F9F1}', name: 'Mur Temporaire' },
+  { id: 'faux-bonus', icon: '\u{2753}', name: 'Faux Bonus' },
+  { id: 'pluie-asteroides', icon: '\u{2604}', name: 'Pluie d\'Astéroïdes' },
+  { id: 'oeil-de-khaos', icon: '\u{1F441}', name: 'Oeil de Khaos' },
+  { id: 'grapplin-boost', icon: '\u{1FA9D}', name: "Grapplin'Boost" },
+  { id: 'mind-spike', icon: '\u{1F9E0}', name: 'Mind Spike' },
+  { id: 'charge-cornue', icon: '\u{1F98C}', name: 'Charge Cornue' },
+  { id: 'overclock', icon: '\u{26A1}', name: 'Overclock' },
+  { id: 'napalm-trail', icon: '\u{1F525}', name: 'Napalm Trail' },
+  { id: 'hex-clone', icon: '\u{1F52E}', name: 'Hex Clone' },
+  { id: 'sonar-pulse', icon: '\u{1F4E1}', name: 'Sonar Pulse' },
+  { id: 'root-trap', icon: '\u{1FAB4}', name: 'Root Trap' }
+];
+
+function buildItemPickerSection() {
+  const buttons = TEST_ITEMS.map(item =>
+    `<button class="item-pick-btn" data-item-id="${item.id}"
+       style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;
+              background:rgba(255,255,255,0.05);border:1px solid #444;border-radius:4px;
+              color:#ccc;cursor:pointer;font-size:13px;font-family:inherit;text-align:left;"
+       onmouseover="this.style.borderColor='#ff4400';this.style.background='rgba(255,68,0,0.15)'"
+       onmouseout="this.style.borderColor='#444';this.style.background='rgba(255,255,255,0.05)'">
+      <span style="font-size:20px;">${item.icon}</span>
+      <span>${item.name}</span>
+    </button>`
+  ).join('');
+
+  return `
+    <div class="pause-section">
+      <div class="pause-section-header" data-section="items">GIVE ITEM <span>+</span></div>
+      <div class="pause-section-content" id="section-items" style="max-height:300px;overflow-y:auto;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${buttons}
+        </div>
+      </div>
+    </div>
   `;
 }

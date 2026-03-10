@@ -102,7 +102,12 @@ export function show(container, data = {}) {
     if (currentPlayer >= playerCount) {
       _done = true;
       stopPreviews();
-      if (playerCount === 1) {
+      if (data.mode === 'test-items') {
+        // Skip circuit select — go straight to test arena
+        import('../game/RaceSetup.js').then(m => {
+          m.startRace({ ...data, characterId: selectedIds[0], circuitId: 'test-arena' });
+        });
+      } else if (playerCount === 1) {
         setScene('circuit-select', { ...data, characterId: selectedIds[0] });
       } else {
         setScene('circuit-select', { ...data, characterIds: selectedIds });

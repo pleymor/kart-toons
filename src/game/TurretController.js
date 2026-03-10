@@ -26,8 +26,8 @@ export class TurretController {
     const basMat = new THREE.MeshPhongMaterial({ color: 0x666666 });
     this.mesh.add(new THREE.Mesh(basGeo, basMat));
 
-    // Position relative to kart (rear)
-    this.mesh.position.set(0, 1.3, -1.2);
+    // Position relative to kart (rear, elevated above seat)
+    this.mesh.position.set(0, 2.2, -1.2);
   }
 
   update(delta, input) {
@@ -69,7 +69,7 @@ export class TurretController {
 
   getWorldPosition() {
     _tmpPos.copy(this.kart.position);
-    _tmpPos.y += 1.3;
+    _tmpPos.y += 2.2;
     _tmpPos.x -= Math.sin(this.kart.yaw) * 1.2;
     _tmpPos.z -= Math.cos(this.kart.yaw) * 1.2;
     return _tmpPos;

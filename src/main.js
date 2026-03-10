@@ -21,6 +21,7 @@ let raceManager = null;
 let itemSystem = null;
 let aiControllers = [];
 let playerKart = null;
+let raceMode = null;
 let uiOverlay = document.getElementById('ui-overlay');
 
 function getDelta(now) {
@@ -99,6 +100,8 @@ export function getRaceManager() { return raceManager; }
 export function getItemSystem() { return itemSystem; }
 export function getPlayerKart() { return playerKart; }
 export function getAIControllers() { return aiControllers; }
+export function getRaceMode() { return raceMode; }
+export function setRaceMode(mode) { raceMode = mode; }
 
 export function setRaceState({ raceManagerInstance, itemSystemInstance, playerKartInstance, aiControllerInstances }) {
   raceManager = raceManagerInstance;
