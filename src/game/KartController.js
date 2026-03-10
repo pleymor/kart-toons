@@ -51,6 +51,7 @@ export class KartController {
     this.airborne = false; // true when launched (levitateur, ramps)
     this._groundY = 0;    // track surface Y at current position
     this.slopeGrade = 0;  // positive = uphill, negative = downhill
+    this._prevSlopeGrade = 0; // previous frame slope for crest detection
     this.pitchAngle = 0;  // tilt forward/back from slope
     this._targetPitch = 0;
     this._respawnPos = new THREE.Vector3();
@@ -171,8 +172,8 @@ export class KartController {
     this.speed = Math.sqrt(hSpeedSq);
 
     if (this.falling || this.airborne) {
-      // Apply gravity when off-road or launched in the air
-      this.velocity.y -= 30 * delta;
+      // Apply gravity — 18 for a floaty arcade feel, not stone-drop 30
+      this.velocity.y -= 18 * delta;
     } else {
       this.velocity.y = 0;
     }
@@ -285,6 +286,7 @@ export class KartController {
       const segSlope = segDy / segHLen;
       // Dot with kart forward to determine if going up or down
       const dotFwd = (this._forward.x * segDx + this._forward.z * segDz) / segHLen;
+      this._prevSlopeGrade = this.slopeGrade;
       this.slopeGrade = segSlope * dotFwd; // positive = uphill, negative = downhill
       // Pitch angle: atan of rise/run along kart direction
       this._targetPitch = -Math.atan2(segDy * dotFwd, segHLen * Math.abs(dotFwd) || 1);
@@ -304,23 +306,50 @@ export class KartController {
             this.grounded = false;
           }
         } else {
-          // Normal: snap to surface
-          this.grounded = true;
-          this.falling = false;
-          this.position.y = bestY;
+          // Crest detection: if slope transitions from uphill to downhill
+          // and we're going fast, launch naturally off the crest
+          const slopeDelta = this.slopeGrade - this._prevSlopeGrade;
+          const speedRatio = this.speed / (this.baseMaxSpeed || 50);
+          if (slopeDelta < -0.03 && speedRatio > 0.4 && this.grounded) {
+            // Launch! Vertical velocity from forward momentum along the previous upward slope
+            const launchVy = Math.abs(this._prevSlopeGrade) * this.speed * 0.5;
+            if (launchVy > 2) {
+              this.airborne = true;
+              this.grounded = false;
+              this.velocity.y = Math.min(launchVy, 15);
+            } else {
+              // Small bump: just snap
+              this.grounded = true;
+              this.falling = false;
+              this.position.y = bestY;
+            }
+          } else {
+            // Normal: snap to surface
+            this.grounded = true;
+            this.falling = false;
+            this.position.y = bestY;
+          }
         }
         this.surfaceFriction = lateralDist <= trackHalf ? 1.0 : 0.6;
         return;
       }
 
-      // Off road: brake hard and respawn after delay
-      this.grounded = false;
-      this.falling = true;
+      // Off road: gentle arc down, preserve some momentum
+      if (!this.falling) {
+        // First frame off-road: keep current horizontal momentum
+        this.falling = true;
+        this.grounded = false;
+        // Give a slight upward nudge based on forward speed for a natural arc
+        if (this.velocity.y === 0) {
+          this.velocity.y = Math.min(this.speed * 0.15, 5);
+        }
+      }
       this.surfaceFriction = 0.05;
-      // Rapidly kill speed
-      this.speed *= 0.92;
-      this.velocity.x *= 0.92;
-      this.velocity.z *= 0.92;
+      // Gentle deceleration (not instant kill) — air drag
+      const airDrag = 0.98;
+      this.speed *= airDrag;
+      this.velocity.x *= airDrag;
+      this.velocity.z *= airDrag;
       return;
     }
 
@@ -423,6 +452,13 @@ export class KartController {
   _syncMesh() {
     if (this.mesh) {
       this.mesh.position.copy(this.position);
+
+      // In the air: pitch follows vertical velocity (nose up on launch, nose down on fall)
+      if (this.airborne || this.falling) {
+        const hSpeed = Math.max(this.speed, 1);
+        this._targetPitch = Math.atan2(this.velocity.y, hSpeed) * 0.6;
+      }
+
       // Smooth pitch toward target
       this.pitchAngle += (this._targetPitch - this.pitchAngle) * 0.15;
 

@@ -1626,10 +1626,11 @@ function checkTrackElements(elements, participants, delta) {
       if (cooldowns.has(cooldownKey)) continue;
 
       if (el.type === 'ramp') {
-        // Launch kart upward
+        // Launch kart — velocity scales with speed for natural feel
         kart.airborne = true;
         kart.grounded = false;
-        kart.velocity.y = el.launchVelocity;
+        const speedRatio = Math.max(0.3, kart.speed / (kart.baseMaxSpeed || 50));
+        kart.velocity.y = el.launchVelocity * speedRatio;
         cooldowns.set(cooldownKey, 2.0); // 2s cooldown
 
       } else if (el.type === 'boost') {
@@ -1994,6 +1995,9 @@ class SceneryCollector {
       const merged = geos.length > 1 ? mergeGeometries(geos, false) : geos[0];
       if (!merged) continue;
       const mesh = renderer.createToonMesh(merged, hex);
+      // Merged scenery spans the whole track — disable shadow casting
+      // to prevent a giant shadow covering everything in the shadow map
+      mesh.castShadow = false;
       renderer.scene.add(mesh);
     }
     this._byColor.clear();

@@ -335,38 +335,12 @@ export class Renderer {
       vp.camera.aspect = vpW / vpH;
       vp.camera.updateProjectionMatrix();
 
-      // 1) Render scene directly to canvas (correct colors)
+      // Direct render to canvas
       this.renderer.setRenderTarget(null);
       this.renderer.setViewport(x, y, vpW, vpH);
       this.renderer.setScissor(x, y, vpW, vpH);
       this.renderer.setScissorTest(true);
       this.renderer.render(this.scene, vp.camera);
-
-      // 2) Depth-only pass to RT (cheap, no fragment shading)
-      const rt = this._sceneRT;
-      if (rt.width !== vpW || rt.height !== vpH) {
-        rt.setSize(vpW, vpH);
-      }
-      this.scene.overrideMaterial = this._depthOnlyMaterial;
-      this.renderer.setRenderTarget(rt);
-      this.renderer.setViewport(0, 0, vpW, vpH);
-      this.renderer.setScissor(0, 0, vpW, vpH);
-      this.renderer.setScissorTest(false);
-      this.renderer.clear();
-      this.renderer.render(this.scene, vp.camera);
-      this.scene.overrideMaterial = null;
-
-      // 3) Overlay outlines using depth from RT
-      this.renderer.setRenderTarget(null);
-      this.renderer.setViewport(x, y, vpW, vpH);
-      this.renderer.setScissor(x, y, vpW, vpH);
-      this.renderer.setScissorTest(true);
-      const uniforms = this._outlineMaterial.uniforms;
-      uniforms.tDepth.value = rt.depthTexture;
-      uniforms.resolution.value.set(vpW, vpH);
-      uniforms.cameraNear.value = vp.camera.near;
-      uniforms.cameraFar.value = vp.camera.far;
-      this.renderer.render(this._outlineScene, this._outlineCamera);
     }
 
     // FPS tracking
