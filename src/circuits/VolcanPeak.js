@@ -33,6 +33,12 @@ function generateWaypoints() {
   points[60].y += 0.5;
   points[72].y += 0.3;
 
+  // Pronounced crest after the first boost (around waypoint 12)
+  // Creates a hill that should launch karts coming off the boost
+  points[11].y += 4;
+  points[12].y += 10;
+  points[13].y += 5;
+
   return points;
 }
 

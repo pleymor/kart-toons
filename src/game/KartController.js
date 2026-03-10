@@ -175,7 +175,8 @@ export class KartController {
       // Apply gravity — 18 for a floaty arcade feel, not stone-drop 30
       this.velocity.y -= 18 * delta;
     } else {
-      this.velocity.y = 0;
+      // Grounded: vertical velocity follows the slope
+      this.velocity.y = this.speed * this.slopeGrade;
     }
 
     // Move
@@ -286,7 +287,6 @@ export class KartController {
       const segSlope = segDy / segHLen;
       // Dot with kart forward to determine if going up or down
       const dotFwd = (this._forward.x * segDx + this._forward.z * segDz) / segHLen;
-      this._prevSlopeGrade = this.slopeGrade;
       this.slopeGrade = segSlope * dotFwd; // positive = uphill, negative = downhill
       // Pitch angle: atan of rise/run along kart direction
       this._targetPitch = -Math.atan2(segDy * dotFwd, segHLen * Math.abs(dotFwd) || 1);
@@ -294,42 +294,37 @@ export class KartController {
       if (lateralDist <= trackHalf + 2) {
         // On or near road
         if (this.airborne) {
-          // Launched in the air: don't snap, let gravity bring us down
-          if (this.position.y <= bestY) {
-            // Landed
+          // Launched in the air: only land when falling back down onto the surface
+          if (this.position.y <= bestY && this.velocity.y <= 0) {
+            // Coming down and hit the surface — land
             this.airborne = false;
             this.grounded = true;
             this.falling = false;
             this.position.y = bestY;
             this.velocity.y = 0;
+          } else if (this.position.y < bestY) {
+            // Still going up but clipping through surface — push up
+            this.position.y = bestY;
           } else {
             this.grounded = false;
           }
+        } else if (this._prevSlopeGrade > 0.03 && this.slopeGrade <= 0 && this.speed > 10) {
+          // Crest detection: slope transitioned from uphill to flat/downhill at speed
+          this.airborne = true;
+          this.grounded = false;
+          // Launch velocity proportional to previous uphill slope and current speed
+          this.velocity.y = this.speed * this._prevSlopeGrade * 0.7;
+        } else if (this.position.y > bestY + 0.05 && this.speed > 5) {
+          // Fallback: position above track (e.g. from external launch)
+          this.airborne = true;
+          this.grounded = false;
         } else {
-          // Crest detection: if slope transitions from uphill to downhill
-          // and we're going fast, launch naturally off the crest
-          const slopeDelta = this.slopeGrade - this._prevSlopeGrade;
-          const speedRatio = this.speed / (this.baseMaxSpeed || 50);
-          if (slopeDelta < -0.03 && speedRatio > 0.4 && this.grounded) {
-            // Launch! Vertical velocity from forward momentum along the previous upward slope
-            const launchVy = Math.abs(this._prevSlopeGrade) * this.speed * 0.5;
-            if (launchVy > 2) {
-              this.airborne = true;
-              this.grounded = false;
-              this.velocity.y = Math.min(launchVy, 15);
-            } else {
-              // Small bump: just snap
-              this.grounded = true;
-              this.falling = false;
-              this.position.y = bestY;
-            }
-          } else {
-            // Normal: snap to surface
-            this.grounded = true;
-            this.falling = false;
-            this.position.y = bestY;
-          }
+          // Normal: snap to surface
+          this.grounded = true;
+          this.falling = false;
+          this.position.y = bestY;
         }
+        this._prevSlopeGrade = this.slopeGrade;
         this.surfaceFriction = lateralDist <= trackHalf ? 1.0 : 0.6;
         return;
       }

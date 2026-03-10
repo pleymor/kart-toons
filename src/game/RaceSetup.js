@@ -1441,9 +1441,12 @@ function buildTrackElements(renderer, circuit, waypoints) {
   const rng = mulberry32(seed + 42);
 
   // Ramps: 3-4 per circuit, every ~18-22 waypoints
+  // Skip ramps near the volcanic crest (waypoints 10-14)
+  const skipRampZone = circuit.id === 'volcan-peak' ? [10, 14] : null;
   const rampStep = Math.floor(n / 4);
   for (let k = 0; k < 3; k++) {
     const idx = Math.min(n - 2, Math.floor(rampStep * (k + 0.5) + rng() * 4 - 2));
+    if (skipRampZone && idx >= skipRampZone[0] && idx <= skipRampZone[1]) continue;
     const wp = waypoints[idx];
     const next = waypoints[(idx + 1) % n];
     const dx = next.x - wp.x;
