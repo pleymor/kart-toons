@@ -37,10 +37,11 @@ export class AudioEngine {
     this.spatialEnabled = true;
     this.musicMode = 'dynamic'; // 'dynamic' | 'chill' | 'off'
 
-    // Audio context for engine synthesis. Howler creates its AudioContext
-    // lazily on first use; we hold off until a user gesture (see _installAutoUnlock)
-    // so the browser's autoplay policy never blocks (or warns about) the context.
-    this.audioContext = null;
+    // We manage the unlock gesture ourselves (see _installAutoUnlock). Howler's
+    // own autoUnlock would, on the first gesture, call Howler.unload() to rebuild
+    // the context at 44.1kHz — closing the context (and unloading our music) on
+    // the common 48kHz desktop case. Disabling it keeps a single stable context.
+    Howler.autoUnlock = false;
 
     // SFX pool
     this.sfxPool = new Map();
@@ -66,6 +67,15 @@ export class AudioEngine {
   }
 
   /**
+   * The live Web Audio context. Always read from Howler so we never hold a
+   * stale reference if Howler ever rebuilds it. Null until the first gesture.
+   * @returns {?AudioContext}
+   */
+  get audioContext() {
+    return Howler.ctx || null;
+  }
+
+  /**
    * Register one-time listeners that create and resume the AudioContext on the
    * first user gesture, satisfying the browser autoplay policy. Until then no
    * Howler API is called, so the context is never constructed prematurely.
@@ -82,10 +92,8 @@ export class AudioEngine {
 
       // Creating the context here (inside the gesture) is allowed by the browser.
       Howler.volume(this.masterVolume);
-      this.audioContext = Howler.ctx;
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume();
-      }
+      const ctx = this.audioContext;
+      if (ctx && ctx.state === 'suspended') ctx.resume();
       this._initEngineSynth();
 
       events.forEach(e => window.removeEventListener(e, unlock));
