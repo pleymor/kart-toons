@@ -107,24 +107,9 @@ export class AudioEngine {
       const ctx = this.audioContext;
 
       const ready = () => {
-        const c = this.audioContext;
-        // eslint-disable-next-line no-console
-        console.log('[AUDIO] unlock ready:', {
-          ctxState: c && c.state,
-          sampleRate: c && c.sampleRate,
-          masterVolume: this.masterVolume,
-          musicVolume: this.musicVolume,
-          musicMode: this.musicMode,
-          howlerVolume: Howler.volume(),
-          howlerNoAudio: Howler.noAudio,
-          usingWebAudio: Howler.usingWebAudio
-        });
         this._initEngineSynth();
         if (typeof this.onUnlock === 'function') this.onUnlock();
       };
-
-      // eslint-disable-next-line no-console
-      console.log('[AUDIO] gesture unlock fired. ctx state =', ctx && ctx.state);
 
       // Wait for the context to be running before kicking off playback.
       if (ctx && ctx.state !== 'running' && ctx.resume) {
@@ -264,19 +249,12 @@ export class AudioEngine {
     }
     this.stopMusic();
 
-    /* eslint-disable no-console */
     this.menuMusic = new Howl({
       src: ['/assets/audio/music/menu.mp3'],
       loop: true,
-      volume: this.musicVolume * this.masterVolume,
-      onload: () => console.log('[AUDIO] menu.mp3 loaded'),
-      onplay: (id) => console.log('[AUDIO] menu.mp3 PLAY id=', id, 'playing=', this.menuMusic.playing(), 'vol=', this.menuMusic.volume()),
-      onloaderror: (id, err) => console.error('[AUDIO] menu.mp3 LOAD ERROR', err),
-      onplayerror: (id, err) => console.error('[AUDIO] menu.mp3 PLAY ERROR', err)
+      volume: this.musicVolume * this.masterVolume
     });
-    console.log('[AUDIO] startMenuMusic -> play(), vol=', this.musicVolume * this.masterVolume);
     this.menuMusic.play();
-    /* eslint-enable no-console */
   }
 
   stopMenuMusic() {
