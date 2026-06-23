@@ -37,8 +37,10 @@ export class AudioEngine {
     this.spatialEnabled = true;
     this.musicMode = 'dynamic'; // 'dynamic' | 'chill' | 'off'
 
-    // Audio context for engine synthesis
-    this.audioContext = Howler.ctx;
+    // Audio context for engine synthesis. Howler creates its AudioContext
+    // lazily on first use; we hold off until a user gesture (see _installAutoUnlock)
+    // so the browser's autoplay policy never blocks (or warns about) the context.
+    this.audioContext = null;
 
     // SFX pool
     this.sfxPool = new Map();
@@ -54,36 +56,43 @@ export class AudioEngine {
     this.engineOsc = null;
     this.engineGain = null;
 
-    // Autoplay policy: browsers block the AudioContext until a user gesture.
-    // We defer any sound until the first interaction, then resume + notify.
-    this.unlocked = !this.audioContext || this.audioContext.state === 'running';
+    // Autoplay policy: browsers forbid creating/starting an AudioContext before
+    // a user gesture. We touch nothing in Howler until the first interaction.
+    this.unlocked = false;
     /** @type {?() => void} Called once when audio is unlocked by a gesture. */
     this.onUnlock = null;
 
-    this._initEngineSynth();
     this._installAutoUnlock();
   }
 
   /**
-   * Register one-time listeners that resume the AudioContext on the first user
-   * gesture, satisfying the browser autoplay policy. Idempotent and self-removing.
+   * Register one-time listeners that create and resume the AudioContext on the
+   * first user gesture, satisfying the browser autoplay policy. Until then no
+   * Howler API is called, so the context is never constructed prematurely.
+   * Self-removing and idempotent.
    * @private
    */
   _installAutoUnlock() {
-    if (this.unlocked || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
 
     const events = ['pointerdown', 'keydown', 'touchstart'];
     const unlock = () => {
       if (this.unlocked) return;
       this.unlocked = true;
+
+      // Creating the context here (inside the gesture) is allowed by the browser.
+      Howler.volume(this.masterVolume);
+      this.audioContext = Howler.ctx;
       if (this.audioContext && this.audioContext.state === 'suspended') {
         this.audioContext.resume();
       }
+      this._initEngineSynth();
+
       events.forEach(e => window.removeEventListener(e, unlock));
       if (typeof this.onUnlock === 'function') this.onUnlock();
     };
 
-    events.forEach(e => window.addEventListener(e, unlock, { once: false }));
+    events.forEach(e => window.addEventListener(e, unlock));
   }
 
   _initEngineSynth() {
@@ -287,7 +296,9 @@ export class AudioEngine {
 
   setMasterVolume(v) {
     this.masterVolume = v;
-    Howler.volume(v);
+    // Avoid creating the AudioContext before the unlock gesture; it is applied
+    // in _installAutoUnlock once audio is unlocked.
+    if (this.unlocked) Howler.volume(v);
   }
 
   setMusicVolume(v) { this.musicVolume = v; }
