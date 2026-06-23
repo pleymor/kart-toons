@@ -54,7 +54,36 @@ export class AudioEngine {
     this.engineOsc = null;
     this.engineGain = null;
 
+    // Autoplay policy: browsers block the AudioContext until a user gesture.
+    // We defer any sound until the first interaction, then resume + notify.
+    this.unlocked = !this.audioContext || this.audioContext.state === 'running';
+    /** @type {?() => void} Called once when audio is unlocked by a gesture. */
+    this.onUnlock = null;
+
     this._initEngineSynth();
+    this._installAutoUnlock();
+  }
+
+  /**
+   * Register one-time listeners that resume the AudioContext on the first user
+   * gesture, satisfying the browser autoplay policy. Idempotent and self-removing.
+   * @private
+   */
+  _installAutoUnlock() {
+    if (this.unlocked || typeof window === 'undefined') return;
+
+    const events = ['pointerdown', 'keydown', 'touchstart'];
+    const unlock = () => {
+      if (this.unlocked) return;
+      this.unlocked = true;
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
+      }
+      events.forEach(e => window.removeEventListener(e, unlock));
+      if (typeof this.onUnlock === 'function') this.onUnlock();
+    };
+
+    events.forEach(e => window.addEventListener(e, unlock, { once: false }));
   }
 
   _initEngineSynth() {
@@ -176,7 +205,12 @@ export class AudioEngine {
 
   startMenuMusic() {
     if (this.musicMode === 'off') return;
-    if (this.menuMusic) return; // already playing
+    // Defer until a user gesture unlocks the audio context; onUnlock retries.
+    if (!this.unlocked) return;
+    if (this.menuMusic) {
+      if (!this.menuMusic.playing()) this.menuMusic.play();
+      return;
+    }
     this.stopMusic();
 
     this.menuMusic = new Howl({

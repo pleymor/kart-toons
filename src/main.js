@@ -129,6 +129,11 @@ async function init() {
   // Re-assign when a gamepad connects
   window.addEventListener('gamepadconnected', () => inputManager.autoAssignGamepads());
   audioEngine = new AudioEngine();
+  // Once the browser unlocks audio (first gesture), start the music for
+  // whatever non-race scene we're currently in.
+  audioEngine.onUnlock = () => {
+    if (currentScene !== SCENE.RACE) audioEngine.startMenuMusic();
+  };
 
   // Auto quality detection
   const qualityDetector = new QualityDetector();
