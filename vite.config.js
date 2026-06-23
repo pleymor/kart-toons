@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     glsl(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       manifest: {
         name: 'KHAOS KART',
         short_name: 'KHAOS KART',
@@ -21,6 +21,9 @@ export default defineConfig({
         ]
       },
       workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html}'],
         runtimeCaching: [

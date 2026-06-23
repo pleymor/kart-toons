@@ -76,28 +76,47 @@ export class AudioEngine {
   }
 
   /**
-   * Register one-time listeners that create and resume the AudioContext on the
-   * first user gesture, satisfying the browser autoplay policy. Until then no
-   * Howler API is called, so the context is never constructed prematurely.
-   * Self-removing and idempotent.
+   * Wire up the browser autoplay policy. Until the first user gesture we touch
+   * no Howler API, so the AudioContext is never constructed prematurely. On the
+   * first gesture we create the context and resume it; only once resume() has
+   * resolved (context actually running) do we start music / engine synth, so a
+   * sound that finishes loading asynchronously never tries to play into a still
+   * suspended context. A persistent listener keeps the context resumed if the
+   * browser suspends it again (e.g. tab backgrounded).
    * @private
    */
   _installAutoUnlock() {
     if (typeof window === 'undefined') return;
 
-    const events = ['pointerdown', 'keydown', 'touchstart'];
+    const events = ['pointerdown', 'keydown', 'touchstart', 'click'];
+
+    // Safety net: any interaction resumes a suspended context. Stays attached.
+    const keepResumed = () => {
+      const ctx = this.audioContext;
+      if (ctx && ctx.state === 'suspended' && ctx.resume) ctx.resume();
+    };
+    events.forEach(e => window.addEventListener(e, keepResumed));
+
     const unlock = () => {
       if (this.unlocked) return;
       this.unlocked = true;
+      events.forEach(e => window.removeEventListener(e, unlock));
 
       // Creating the context here (inside the gesture) is allowed by the browser.
       Howler.volume(this.masterVolume);
       const ctx = this.audioContext;
-      if (ctx && ctx.state === 'suspended') ctx.resume();
-      this._initEngineSynth();
 
-      events.forEach(e => window.removeEventListener(e, unlock));
-      if (typeof this.onUnlock === 'function') this.onUnlock();
+      const ready = () => {
+        this._initEngineSynth();
+        if (typeof this.onUnlock === 'function') this.onUnlock();
+      };
+
+      // Wait for the context to be running before kicking off playback.
+      if (ctx && ctx.state !== 'running' && ctx.resume) {
+        ctx.resume().then(ready, ready);
+      } else {
+        ready();
+      }
     };
 
     events.forEach(e => window.addEventListener(e, unlock));
