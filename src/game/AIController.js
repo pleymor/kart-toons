@@ -30,8 +30,10 @@ export class AIController {
     const charId = kartController.character?.id || 'rico';
     this.personality = PERSONALITY[charId] || PERSONALITY.rico;
 
-    // Adjust behavior based on personality
-    this.lookAhead = this.personality.aggression > 0.7 ? 2 : 3;
+    // Adjust behavior based on personality. Keep this small: aiming at a
+    // waypoint too far ahead makes the AI cut corners and drive straight off
+    // narrow/winding sections (a major cause of AIs falling off the track).
+    this.lookAhead = this.personality.aggression > 0.7 ? 1 : 2;
 
     // Error simulation
     this._errorTimer = 0;

@@ -23,7 +23,39 @@ function generateWaypoints() {
   points[35].y += 0.5;
   points[58].y += 0.8;
 
+  limitSlope(points, 28);
+
   return points;
+}
+
+/**
+ * Smooth a closed loop of waypoints so no segment is steeper than `maxAngleDeg`
+ * (in either direction). The raw elevation formula produces near-vertical jumps
+ * — e.g. the gravity-flip section and bunched harmonic cusps — that read as
+ * impassable walls and launch karts off cliffs. This relaxes the Y profile,
+ * distributing any excess slope symmetrically between neighbours over several
+ * passes, while leaving X/Z (the track layout) untouched.
+ * @param {THREE.Vector3[]} points Closed-loop waypoints, mutated in place.
+ * @param {number} maxAngleDeg Maximum allowed climb/descent angle per segment.
+ */
+function limitSlope(points, maxAngleDeg) {
+  const maxSlope = Math.tan((maxAngleDeg * Math.PI) / 180);
+  const n = points.length;
+  for (let pass = 0; pass < 24; pass++) {
+    for (let i = 0; i < n; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % n];
+      const h = Math.hypot(b.x - a.x, b.z - a.z) || 0.001;
+      const maxDy = maxSlope * h;
+      const dy = b.y - a.y;
+      const excess = dy - Math.max(-maxDy, Math.min(maxDy, dy));
+      if (excess !== 0) {
+        a.y += excess / 2;
+        b.y -= excess / 2;
+      }
+    }
+  }
+  for (const p of points) p.y = Math.max(0, p.y);
 }
 
 const waypoints = generateWaypoints();
