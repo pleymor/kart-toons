@@ -4,8 +4,15 @@ import { Storage } from '../utils/Storage.js';
 
 let pauseElement = null;
 let isOpen = false;
+let _initialized = false;
 
 export function init() {
+  // Guard against multiple registrations: startRace() calls this on every race,
+  // and a duplicated keydown listener would toggle the menu twice per Escape
+  // press (open then immediately close), so it would never appear.
+  if (_initialized) return;
+  _initialized = true;
+
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       if (isOpen) close();

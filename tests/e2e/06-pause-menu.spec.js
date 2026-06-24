@@ -4,7 +4,7 @@ test.describe('Pause Menu', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.locator('text=SOLO RACE').click();
-    await page.locator('.char-card').first().click();
+    await page.locator('#select-btn').click();
     await page.locator('.circuit-card').first().click();
     await expect(page.locator('#hud')).toBeVisible({ timeout: 10000 });
     await page.waitForTimeout(2000);
